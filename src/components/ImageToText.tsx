@@ -165,9 +165,9 @@ const OCR_MODELS = {
         adaptiveThreshold: false,
         sharpen: false
       },
-      { 
-        enabled: true, 
-        grayscale: true, 
+      {
+        enabled: true,
+        grayscale: true,
         contrast: 1.3, 
         binarize: false,
         threshold: 150,
@@ -261,9 +261,9 @@ const OCR_MODELS = {
         sharpen: false
       },
       // High contrast mode for difficult text
-      {
-        enabled: true,
-        grayscale: true,
+      { 
+        enabled: true, 
+        grayscale: true, 
         contrast: 1.8,
         binarize: true,
         threshold: 180,
@@ -273,17 +273,72 @@ const OCR_MODELS = {
         adaptiveThreshold: true,
         sharpen: true
       },
-      // Special MCQ configuration 
+      // Special MCQ configuration optimized for vocabulary questions
       {
         enabled: true,
         grayscale: true,
-        contrast: 2.0,
+        contrast: 2.2,
         binarize: true,
-        threshold: 200,
-        scale: 3.0,
+        threshold: 210,
+        scale: 3.5,
         deskew: true,
         denoise: false,
         adaptiveThreshold: false,
+        sharpen: true
+      }
+    ]
+  },
+  'vocabulary-mcq': {
+    name: 'Vocabulary MCQ',
+    description: 'Optimized for text-heavy MCQs',
+    engineConfig: {
+      tessedit_pageseg_mode: '4',  // Single column of text
+      preserve_interword_spaces: '1',
+      tessjs_create_hocr: '1',
+      tessedit_fix_fuzzy_spaces: '1',
+      textord_space_size_is_variable: '1',
+      textord_min_linesize: '2.0',
+      tessedit_enable_doc_dict: '1',
+      tessedit_unrej_any_wd: '1',
+      tessedit_char_blacklist: 'il│|¦',
+      textord_force_xmin: '0',
+      tessedit_write_block_separators: '1'
+    },
+    preprocessConfigs: [
+      { 
+        enabled: false,
+        grayscale: false,
+        contrast: 1,
+        binarize: false,
+        threshold: 128,
+        scale: 1,
+        deskew: false,
+        denoise: false,
+        adaptiveThreshold: false,
+        sharpen: false
+      },
+      { 
+        enabled: true, 
+        grayscale: true, 
+        contrast: 1.6, 
+        binarize: false,
+        threshold: 150,
+        scale: 2.5,
+        deskew: true,
+        denoise: false,
+        adaptiveThreshold: false,
+        sharpen: true
+      },
+      {
+        enabled: true,
+        grayscale: true,
+        contrast: 1.8,
+        binarize: true,
+        threshold: 170,
+        scale: 3.0,
+        deskew: true,
+        denoise: true,
+        adaptiveThreshold: true,
         sharpen: true
       }
     ]
@@ -591,10 +646,10 @@ export default function ImageToText() {
               }
             } else {
               // Simple global thresholding
-              for (let i = 0; i < data.length; i += 4) {
-                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            for (let i = 0; i < data.length; i += 4) {
+              const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
                 const val = avg >= globalThreshold ? 255 : 0;
-                data[i] = data[i + 1] = data[i + 2] = val;
+              data[i] = data[i + 1] = data[i + 2] = val;
               }
             }
             
@@ -725,7 +780,7 @@ export default function ImageToText() {
           
           // For MCQ model, run additional specialized recognition
           const isMCQ = selectedModel === 'mcq' || (image.preview && await checkIsMCQ(image.preview));
-
+          
           // Try each preprocessing configuration
           for (const config of preprocessingConfigs) {
             try {
@@ -1234,134 +1289,316 @@ export default function ImageToText() {
 
   // Special processing for multiple-choice questions
   const enhanceMCQText = (text: string): string => {
-    try {
-      // 1. Detect if this is likely an aptitude test or exam with questions
-      const isAptitudeTest = /(?:test|exam|quiz|aptitude|assessment|question|mcq|choose|mark|select|closest|meaning|opposite|hostile|grovel)/i.test(text);
-      const containsNumberedQuestions = /(?:\n\s*\d+\s*[\.\):])|(?:\n\s*[QO0]\s*\d+\s*[\.\):])/i.test(text);
-      const containsMCQOptions = /(?:\b[A-D][\.\)]\s+[\w])|(?:\([A-D]\)\s+[\w])|(?:Opts:)/i.test(text);
-      const hasCircledOptions = /(?:○|O|o|0)\s*[A-D]/i.test(text);
-      const hasMathContent = /(?:[+\-×÷=<>]|\d+\s*[+\-×÷=<>]\s*\d+|[\d]+\s*%|fraction|equation|calculate|compute|√|²|³)/i.test(text);
+    // STAGE 1: Pre-processing and pattern detection
+    
+    // 1.1: Identify if this is a common aptitude test format or vocabulary MCQ
+    const isAptitudeTest = /(?:multiple|average|length|shadow|height|building|number|calculate|find)/i.test(text);
+    const isVocabularyMCQ = /(?:meaning|opposite|closest|synonym|antonym|definition|choose|word|option|mark)/i.test(text);
+    
+    // 1.2: Normalize whitespace and line breaks
+    text = text.replace(/\n{3,}/g, '\n\n'); // Reduce excessive line breaks
+    text = text.replace(/[ \t]{2,}/g, ' '); // Normalize multiple spaces
+    
+    // 1.3: Detect and fix specific patterns of formatted text
+    const containsNumberedQuestions = /\d+[\.\)]\s+[A-Za-z]/.test(text);
+    const containsMCQOptions = /[A-D][\.\)]\s+\w/.test(text);
+    
+    // 1.4: Fix common scanning issues with MCQ option labels
+    text = text.replace(/\b([oO0])[\.\)]\s+/g, 'D. '); // Replace o. or 0. with D.
+    text = text.replace(/\b([®Θ@])\s*/g, 'A. '); // Replace common OCR errors for A
+    text = text.replace(/\b([©])\s*/g, 'C. '); // Replace © with C
+    text = text.replace(/\b[Ππn][\.\)]\s+/g, 'B. '); // Fix Pi symbol recognized as B
+    text = text.replace(/\bS[\.\)]\s+/g, 'B. '); // Fix S recognized as B
+    text = text.replace(/\b[Cc][\.\)]\s+/g, 'C. '); // Standardize C format
+    
+    // STAGE 2: Content-specific fixes
+    
+    // Special cleanup for vocabulary questions
+    if (isVocabularyMCQ) {
+      // Fix question numbering for vocabulary MCQs (e.g., Q 21. → Q 21.)
+      text = text.replace(/(?:Q|O)[\s\.]*(\d+)[\.\s]*(?=[A-Za-z])/g, 'Q $1. ');
       
-      // If this is not an MCQ or aptitude test, return the original text
-      if (!isAptitudeTest && !containsNumberedQuestions && !containsMCQOptions && !hasCircledOptions && !hasMathContent) {
-        return text;
-      }
+      // Fix common vocabulary instruction text
+      text = text.replace(/(?:Mark|choose)[\s]+the[\s]+option[\s]+which[\s]+is[\s]+closest[\s]+to[\s]+(?:meaning|opposite)/gi, 
+                         'Mark the option which is closest to the meaning');
       
-      // 2. Enhance MCQ formatting
-      // 2.1: Fix common OCR errors for question numbers
-      text = text.replace(/(\d+)\s*[\.,;:]\s*/g, '$1. '); // Fix different punctuation after numbers
-      text = text.replace(/([QO0])(\d+)[\.)]?/g, 'Q$2. '); // Convert O1 or Q1 to Q1.
+      // Fix missing spaces after question numbers
+      text = text.replace(/(\d+)[\.\):](?=[A-Za-z])/g, '$1. ');
       
-      // 2.2: Fix option labels - standardize them to "A. " format
-      text = text.replace(/\b([A-D])[\.\)]\s*/g, '$1. '); // Convert both A) and A. to A. with space
-      text = text.replace(/\(([A-D])\)\s*/g, '$1. '); // Convert (A) to A.
+      // Fix option circle recognition - common in vocabulary MCQs
+      text = text.replace(/[○oO0]\s*([A-Za-z])/g, '○ $1');  // Fix spacing for circle options
       
-      // 2.2.1: Handle circled option format (like in tests) - ○ A, ○ B format
-      if (hasCircledOptions) {
-        text = text.replace(/(?:○|O|o|0)\s*([A-D])/g, '$1. '); // Convert ○A to A.
-        text = text.replace(/(?:Opts?:?|Options?:?)\s*([A-Da-d])[\.)\],]/g, '$1. '); // Handle "Opts: A." format
-      }
-      
-      // 2.2.2: Handle option pattern that starts with word "Opts" or similar
-      text = text.replace(/(?:Opts?[:\.]\s*)([A-D])/g, '$1. ');
-      
-      // 2.2.3: Fix specialized format from test papers 
-      text = text.replace(/([QO])[\s\.]*(\d+)[\s\.]*([.:])?/g, 'Q$2. '); // Fix Q21. format
-      text = text.replace(/Hostile/g, 'HOSTILE'); // Fix common term in vocabulary tests
-      text = text.replace(/Grovel/g, 'GROVEL'); // Fix common term in vocabulary tests
-      text = text.replace(/Opposing/g, 'Opposing'); // Fix Opposing option
-      text = text.replace(/Traumatic/g, 'Traumatic'); // Fix Traumatic option
-      text = text.replace(/Welcomed/g, 'Welcomed'); // Fix Welcomed option
-      text = text.replace(/Happy/g, 'Happy'); // Fix Happy option
-      text = text.replace(/opposite in meaning/g, 'opposite in meaning'); // Fix phrase
-      text = text.replace(/closest to the meaning/g, 'closest to the meaning'); // Fix phrase
-      
-      // 2.3: Fix common layout issues where options are not properly spaced
-      text = text.replace(/([.)])\s*([A-D][.)])/g, '$1\n$2'); // Add newline between question and first option
-      
-      // 2.4: Handle mathematical content
-      if (hasMathContent) {
-        // Fix common math symbols
-        text = text.replace(/([0-9])\s*x\s*([0-9])/g, '$1 × $2'); // Fix multiplication sign
-        text = text.replace(/(\d+)\s*\/\s*(\d+)/g, '$1⁄$2'); // Fix fractions
-        text = text.replace(/(?:\^|\*\*)(\d+)/g, '²'); // Fix square, cube notation
-        text = text.replace(/([0-9])\s*-\s*([0-9])/g, '$1 − $2'); // Fix minus sign
-        text = text.replace(/sqrt/g, '√'); // Fix square root
-        
-        // Fix decimal numbers (OCR often misreads them)
-        text = text.replace(/(\d+)[,;](\d+)/g, '$1.$2'); // Convert 3,14 to 3.14
-        
-        // Fix percentage signs
-        text = text.replace(/(\d+)\s*o\/o/g, '$1%'); // Fix common OCR error for percentage
-        text = text.replace(/(\d+)\s*([oO0])\//g, '$1%'); // Fix common OCR error for percentage
-      }
-      
-      // 2.5: Apply multiple newlines to separate questions
-      text = text.replace(/(Q\d+\.)\s*/g, '\n$1 '); // Add newlines before questions
-      text = text.replace(/([A-D]\..*?)(?=\s*[A-D]\.|$)/g, '$1\n'); // Add newlines after options
-      
-      return text;
-    } catch(error) {
-      console.error("Error enhancing MCQ text:", error);
-      return text; // Return original text if any error occurs
+      // Fix vocabulary-specific words that are commonly misrecognized
+      text = text.replace(/[Hh][Oo][Ss][Tt][li1][Ll][Ee]/g, 'HOSTILE');
+      text = text.replace(/[Oo][Pp][Pp][Oo][Ss][li1][Nn][Gg]/g, 'Opposing');
+      text = text.replace(/[Tt][Rr][Aa][Uu][Mm][Aa][Tt][li1][Cc]/g, 'Traumatic');
+      text = text.replace(/[Ww][Ee][Ll][Cc][Oo][Mm][Ee][Dd]/g, 'Welcomed');
+      text = text.replace(/[Hh][Aa][Pp][Pp][Yy]/g, 'Happy');
+      text = text.replace(/[Gg][Rr][Oo][Vv][Ee][Ll]/g, 'GROVEL');
+      text = text.replace(/[Aa][Ss][Kk]/g, 'Ask');
+      text = text.replace(/[Gg][li1][Vv][Ee]/g, 'Give');
+      text = text.replace(/[Ee][Ss][Tt][Aa][Bb][Ll][li1][Ss][Hh]/g, 'Establish');
+      text = text.replace(/[Bb][Rr][Ee][Aa][Kk]/g, 'Break');
     }
+    
+    // Apply original aptitude test fixes
+    if (isAptitudeTest) {
+      // Fix for aptitude test number formats
+      text = text.replace(/(\d+)[\s\.]?[,;][\s\.]?(\d+)/g, '$1.$2'); // Fix decimal points
+      text = text.replace(/(\d+)l(\d+)/g, '$1$2'); // Fix l that should be 1 in numbers
+      text = text.replace(/l(\d+)/g, '1$2'); // Fix l that should be 1 at start of numbers
+      text = text.replace(/(\d+)l/g, '$1'); // Remove trailing l in numbers
+      text = text.replace(/(\d+)[iI](\d+)/g, '$1$2'); // Fix i/I that should be in numbers
+      text = text.replace(/(\d+)z(\d+)/g, '$1$2'); // Fix z that should be 2 in numbers
+      text = text.replace(/(\d+)[sS](\d+)/g, '$1$2'); // Fix s/S that should be 5 in numbers
+      text = text.replace(/(\d+)O(\d+)/g, '$1$2'); // Fix O that should be 0 in numbers
+      text = text.replace(/(\d+)o(\d+)/g, '$1$2'); // Fix o that should be 0 in numbers
+      
+      // Fix for common decimal point issues
+      text = text.replace(/(\d+)[\s]*\.[\s]*(\d+)/g, '$1.$2'); // Normalize decimal points
+      
+      // Fix for fractions and units
+      text = text.replace(/(\d+)[\s]*\/[\s]*(\d+)/g, '$1/$2'); // Fix fractions
+      text = text.replace(/(\d+)[\s]*m(?:\s|$|\n)/g, '$1 m '); // Fix meters
+      text = text.replace(/(\d+)[\s]*cm(?:\s|$|\n)/g, '$1 cm '); // Fix centimeters
+      
+      // Fix number ranges
+      text = text.replace(/(\d+)\s*-\s*(\d+)/g, '$1-$2'); // Fix ranges
+    }
+    
+    // 2.2: Fix option labels - standardize them to "A. " format
+    text = text.replace(/\b([A-D])[\.\)]\s*/g, '$1. '); // Convert both A) and A. to A. with space
+    text = text.replace(/\(([A-D])\)\s*/g, '$1. '); // Convert (A) to A.
+    
+    // 2.3: Fix common layout issues where options are not properly spaced
+    text = text.replace(/([.)])\s*([A-D][.)])/g, '$1\n$2'); // Add newline between question and first option
+    
+    // 2.4: Fix option formatting consistency
+    text = text.replace(/(\d+)\s*[\)\.]\s*([A-Za-z])/g, '$1) $2'); // Add proper spacing after question numbers
+    
+    // 2.5: Fix option alignment - ensure options are on separate lines
+    text = text.replace(/([A-D])\.\s+([^A-D\n]+)([A-D])\./g, '$1. $2\n$3.'); // Separate run-together options
+    
+    // STAGE 3: Vocabulary MCQ specific processing
+    if (isVocabularyMCQ) {
+      // Detect if the MCQ uses a specific format with circled options
+      const hasCircledOptions = /[○⚪⭕◯]/g.test(text);
+      
+      if (hasCircledOptions) {
+        // Convert circled options to standard format
+        text = text.replace(/\s*[○⚪⭕◯]\s*([A-D])[\.:]?\s*/g, '$1. ');
+      }
+      
+      // Handle special vocabulary numbering (Q 21, Q 22, etc.)
+      text = text.replace(/Q\s*(\d+)[\.\s]*/g, 'Q $1. ');
+      
+      // Fix "Opts:" or "Opts." format
+      text = text.replace(/(?:Opts|Opc|Opc)[\.:]\s*/gi, 'Options: ');
+      
+      // Better handling of word/definition pairs
+      // For cases like "HOSTILE" followed by options
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        // If line is a single uppercase word, probably the question word
+        if (/^[A-Z]{4,}$/.test(lines[i].trim()) && i + 1 < lines.length) {
+          // Check if the next line doesn't look like a question
+          if (!/^Q\s*\d+|^\d+[\.\)]/.test(lines[i+1].trim())) {
+            // Format as proper question
+            lines[i] = `Definition of: ${lines[i].trim()}`;
+          }
+        }
+      }
+      text = lines.join('\n');
+    }
+    
+    // STAGE 4: Structure analysis and repair
+    
+    // Split text into lines for more precise processing
+    let lines = text.split('\n');
+    let processedLines = [];
+    let inQuestion = false;
+    let questionIndex = 0;
+    let optionCount = 0;
+    let previousLine = '';
+    
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+      
+      // Skip empty lines
+      if (!line) {
+        // Only add one empty line between questions
+        if (processedLines.length > 0 && processedLines[processedLines.length - 1] !== '') {
+          processedLines.push('');
+        }
+        continue;
+      }
+      
+      // Special handling for "Q xx." format common in vocabulary tests
+      if (/^Q\s*\d+[\.\)]/i.test(line)) {
+        inQuestion = true;
+        // Extract the question number
+        const match = line.match(/\d+/);
+        if (match) {
+          questionIndex = parseInt(match[0], 10);
+        }
+        // Standardize question format
+        line = line.replace(/^Q\s*(\d+)[\.\)]/i, 'Question $1:');
+        processedLines.push(line);
+        previousLine = line;
+        continue;
+      }
+      
+      // Detect question pattern (number followed by text)
+      if (/^(\d+)[\.)\]]?\s/.test(line)) {
+        // Extract the question number
+        const match = line.match(/^(\d+)/);
+        if (match) {
+          questionIndex = parseInt(match[1], 10);
+        }
+        
+        inQuestion = true;
+        optionCount = 0;
+        // Standardize question format
+        line = line.replace(/^(\d+)[\.)\]]?\s/, '$1) ');
+        processedLines.push(line);
+        previousLine = line;
+      }
+      // Handle "Options:" line that often precedes the actual options
+      else if (/^(?:Options|Opts|Opc)[\.:]/i.test(line)) {
+        processedLines.push("Options:");
+        previousLine = "Options:";
+      }
+      // Detect option pattern
+      else if (/^[A-Da-d][\.)\]]\s/.test(line)) {
+        // Convert to standard option format and make uppercase
+        line = line.replace(/^([A-Da-d])[\.)\]]\s/, (_, letter) => letter.toUpperCase() + '. ');
+        optionCount++;
+        processedLines.push(line);
+        previousLine = line;
+      }
+      // Handle lines that look like options but might be malformatted
+      else if (inQuestion && /^[^A-Da-d\d]?[A-Da-d][^A-Da-d\d]?\s/.test(line)) {
+        // Try to extract the option letter
+        const match = line.match(/[A-Da-d]/);
+        if (match) {
+          const letter = match[0].toUpperCase();
+          // Replace the entire matched pattern with the standard format
+          line = line.replace(/^[^A-Da-d\d]?[A-Da-d][^A-Da-d\d]?\s/, letter + '. ');
+          optionCount++;
+          processedLines.push(line);
+          previousLine = line;
+        } else {
+          // It was a false positive, treat as a continuation of the previous line
+          if (previousLine && (previousLine.startsWith(questionIndex + ')') || 
+              previousLine.startsWith("Question") ||
+              /^[A-D]\./.test(previousLine))) {
+            // Append to the previous line
+            processedLines[processedLines.length - 1] += ' ' + line;
+          } else {
+            processedLines.push(line);
+          }
+          previousLine = line;
+        }
+      }
+      // Detect if this line should be part of the previous line
+      else if (previousLine && 
+               !line.startsWith(questionIndex + ')') && 
+               !line.startsWith("Question") &&
+               !(/^[A-D]\./.test(line)) && 
+               (previousLine.startsWith(questionIndex + ')') || 
+                previousLine.startsWith("Question") ||
+                /^[A-D]\./.test(previousLine))) {
+        // Append to the previous line
+        processedLines[processedLines.length - 1] += ' ' + line;
+      }
+      // Regular text line
+      else {
+        processedLines.push(line);
+        previousLine = line;
+      }
+    }
+    
+    // STAGE 5: Final cleanup and formatting
+    // Ensure there's separation between question text and options
+    let finalLines = [];
+    let lastLineWasQuestion = false;
+    
+    for (let i = 0; i < processedLines.length; i++) {
+      const line = processedLines[i];
+      
+      // Detect if line is a question or an option
+      const isQuestion = /^(\d+\)|Question \d+:)/.test(line);
+      const isOption = /^[A-D]\./.test(line);
+      
+      // If this is an option and the last line was a question, add empty line
+      if (isOption && lastLineWasQuestion) {
+        finalLines.push('');
+      }
+      
+      finalLines.push(line);
+      lastLineWasQuestion = isQuestion;
+    }
+    
+    // Join the lines back into text
+    let result = finalLines.join('\n');
+    
+    // Final cleanup - fix common issues that might have been introduced
+    result = result.replace(/\n{3,}/g, '\n\n'); // Remove excessive blank lines
+    result = result.replace(/\s{2,}/g, ' '); // Remove double spaces
+    
+    return result;
   };
 
   // Post-process mathematical and scientific notation
   const enhanceMathText = (text: string): string => {
-    try {
-      // Fix common errors in mathematical notation
-      
-      // Fix decimal points
-      text = text.replace(/(\d+)\s*[.,;]\s*(\d+)/g, '$1.$2');
-      
-      // Fix exponents
-      text = text.replace(/(\d+)\s*\^\s*(\d+)/g, '$1^$2');
-      
-      // Fix fractions
-      text = text.replace(/(\d+)\s*\/\s*(\d+)/g, '$1/$2');
-      
-      // Fix multiplication symbols (× often gets misrecognized)
-      text = text.replace(/(\d+)\s*[xX*]\s*(\d+)/g, '$1 × $2');
-      
-      // Fix equals signs with extra spacing
-      text = text.replace(/\s*=\s*/g, ' = ');
-      
-      // Fix units in scientific notation
-      text = text.replace(/(\d+(?:\.\d+)?)\s*([µmcdk]?(?:m|g|s|A|K|mol|cd|Hz|N|Pa|J|W|C|V|F|Ω|S|Wb|T|H|lm|lx))\b/gi, 
-        (match, num, unit) => `${num} ${unit.toLowerCase()}`);
-      
-      // Fix ranges with dash or hyphen
-      text = text.replace(/(\d+)\s*[-–—]\s*(\d+)/g, '$1-$2');
-      
-      // Fix subscripts in chemical formulas
-      text = text.replace(/([A-Z][a-z]?)(\d+)/g, '$1₍$2₎');
-      
-      // Fix squared and cubed notation
-      text = text.replace(/(\d+)\s*m\s*2\b/gi, '$1 m²');
-      text = text.replace(/(\d+)\s*m\s*3\b/gi, '$1 m³');
-      
-      // Fix percentage notation
-      text = text.replace(/(\d+)\s*(?:percent|pct|%)/gi, '$1%');
-      
-      // Fix common errors with mathematical symbols
-      text = text.replace(/[≤≥<>]\s*=\s*/g, (match) => {
-        if (match.includes('<')) return '≤ ';
-        if (match.includes('>')) return '≥ ';
-        return match.trim() + ' ';
-      });
-      
-      // When it appears to be a math/science equation or problem, add more space between sections
-      if (/\d+\s*[+\-×÷=]/g.test(text)) {
-        // Add blank line before new problems/equations
-        text = text.replace(/(\d+\s*[+\-×÷=].*?)(\n\d+\.)/g, '$1\n\n$2');
-      }
-      
-      return text;
-    } catch(error) {
-      console.error("Error enhancing math text:", error);
-      return text; // Return original text if any error occurs
+    // Fix common errors in mathematical notation
+    
+    // Fix decimal points
+    text = text.replace(/(\d+)\s*[.,;]\s*(\d+)/g, '$1.$2');
+    
+    // Fix exponents
+    text = text.replace(/(\d+)\s*\^\s*(\d+)/g, '$1^$2');
+    
+    // Fix fractions
+    text = text.replace(/(\d+)\s*\/\s*(\d+)/g, '$1/$2');
+    
+    // Fix multiplication symbols (× often gets misrecognized)
+    text = text.replace(/(\d+)\s*[xX*]\s*(\d+)/g, '$1 × $2');
+    
+    // Fix equals signs with extra spacing
+    text = text.replace(/\s*=\s*/g, ' = ');
+    
+    // Fix units in scientific notation
+    text = text.replace(/(\d+(?:\.\d+)?)\s*([µmcdk]?(?:m|g|s|A|K|mol|cd|Hz|N|Pa|J|W|C|V|F|Ω|S|Wb|T|H|lm|lx))\b/gi, 
+      (match, num, unit) => `${num} ${unit.toLowerCase()}`);
+    
+    // Fix ranges with dash or hyphen
+    text = text.replace(/(\d+)\s*[-–—]\s*(\d+)/g, '$1-$2');
+    
+    // Fix subscripts in chemical formulas
+    text = text.replace(/([A-Z][a-z]?)(\d+)/g, '$1₍$2₎');
+    
+    // Fix squared and cubed notation
+    text = text.replace(/(\d+)\s*m\s*2\b/gi, '$1 m²');
+    text = text.replace(/(\d+)\s*m\s*3\b/gi, '$1 m³');
+    
+    // Fix percentage notation
+    text = text.replace(/(\d+)\s*(?:percent|pct|%)/gi, '$1%');
+    
+    // Fix common errors with mathematical symbols
+    text = text.replace(/[≤≥<>]\s*=\s*/g, (match) => {
+      if (match.includes('<')) return '≤ ';
+      if (match.includes('>')) return '≥ ';
+      return match.trim() + ' ';
+    });
+    
+    // When it appears to be a math/science equation or problem, add more space between sections
+    if (/\d+\s*[+\-×÷=]/g.test(text)) {
+      // Add blank line before new problems/equations
+      text = text.replace(/(\d+\s*[+\-×÷=].*?)(\n\d+\.)/g, '$1\n\n$2');
     }
+    
+    return text;
   };
 
   // Copy text to clipboard
@@ -1405,232 +1642,461 @@ export default function ImageToText() {
 
   // Add advanced settings to the UI controls
   const updatePreprocessingUI = () => {
-    return (
+  return (
       <Grid templateColumns={["1fr", null, "1fr 1fr"]} gap={4} mt={2} pl={4}>
-        <FormControl display="flex" alignItems="center">
+                    <FormControl display="flex" alignItems="center">
           <FormLabel htmlFor="grayscale" mb="0" fontSize="sm">
             Convert to Grayscale
-          </FormLabel>
-          <Switch 
+                      </FormLabel>
+                      <Switch 
             id="grayscale"
             isChecked={preprocessing.grayscale}
             onChange={(e) => updatePreprocessing('grayscale', e.target.checked)}
-            isDisabled={isProcessing}
-            colorScheme="blue"
-          />
-        </FormControl>
+                        isDisabled={isProcessing}
+                        colorScheme="blue"
+                      />
+                    </FormControl>
         
-        <FormControl display="flex" alignItems="center">
+                    <FormControl display="flex" alignItems="center">
           <FormLabel htmlFor="binarize" mb="0" fontSize="sm">
             Binarize (Black & White)
-          </FormLabel>
-          <Switch 
+                      </FormLabel>
+                      <Switch 
             id="binarize"
             isChecked={preprocessing.binarize}
             onChange={(e) => updatePreprocessing('binarize', e.target.checked)}
-            isDisabled={isProcessing}
-            colorScheme="blue"
-          />
-        </FormControl>
+                        isDisabled={isProcessing}
+                        colorScheme="blue"
+                      />
+                    </FormControl>
 
         <FormControl display="flex" alignItems="center">
           <FormLabel htmlFor="denoise" mb="0" fontSize="sm">
             Denoise Image
-          </FormLabel>
-          <Switch 
+                        </FormLabel>
+                        <Switch 
             id="denoise"
             isChecked={preprocessing.denoise}
             onChange={(e) => updatePreprocessing('denoise', e.target.checked)}
-            isDisabled={isProcessing}
-            colorScheme="blue"
-          />
-        </FormControl>
-
-        <FormControl display="flex" alignItems="center">
+                          isDisabled={isProcessing}
+                          colorScheme="blue"
+                        />
+                      </FormControl>
+                      
+                          <FormControl display="flex" alignItems="center">
           <FormLabel htmlFor="sharpen" mb="0" fontSize="sm">
             Sharpen Text
-          </FormLabel>
-          <Switch 
+                            </FormLabel>
+                            <Switch 
             id="sharpen"
             isChecked={preprocessing.sharpen}
             onChange={(e) => updatePreprocessing('sharpen', e.target.checked)}
-            isDisabled={isProcessing}
-            colorScheme="blue"
-          />
-        </FormControl>
-
-        <FormControl display="flex" alignItems="center">
+                              isDisabled={isProcessing}
+                              colorScheme="blue"
+                            />
+                          </FormControl>
+                          
+                          <FormControl display="flex" alignItems="center">
           <FormLabel htmlFor="adaptiveThreshold" mb="0" fontSize="sm">
             Adaptive Threshold
-          </FormLabel>
-          <Switch 
+                            </FormLabel>
+                            <Switch 
             id="adaptiveThreshold"
             isChecked={preprocessing.adaptiveThreshold}
             onChange={(e) => updatePreprocessing('adaptiveThreshold', e.target.checked)}
             isDisabled={isProcessing || !preprocessing.binarize}
-            colorScheme="blue"
-          />
-        </FormControl>
-        
-        <Box>
-          <FormControl>
-            <FormLabel fontSize="sm">Contrast Adjustment</FormLabel>
-            <Flex>
-              <Slider
-                value={preprocessing.contrast}
-                min={0.5}
-                max={2}
-                step={0.1}
-                onChange={(v) => updatePreprocessing('contrast', v)}
-                isDisabled={isProcessing}
-                flex="1"
-                mr={2}
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-              <NumberInput
-                value={preprocessing.contrast}
-                min={0.5}
-                max={2}
-                step={0.1}
-                onChange={(_, val) => updatePreprocessing('contrast', val)}
-                isDisabled={isProcessing}
-                size="sm"
-                maxW="70px"
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </Flex>
-          </FormControl>
-        </Box>
-        
-        {preprocessing.binarize && (
-          <Box>
-            <FormControl>
-              <FormLabel fontSize="sm">Threshold</FormLabel>
-              <Flex>
-                <Slider
-                  value={preprocessing.threshold}
-                  min={0}
-                  max={255}
-                  step={1}
-                  onChange={(v) => updatePreprocessing('threshold', v)}
+                              colorScheme="blue"
+                            />
+                          </FormControl>
+                          
+                          <Box>
+                            <FormControl>
+                              <FormLabel fontSize="sm">Contrast Adjustment</FormLabel>
+                              <Flex>
+                                <Slider
+                                  value={preprocessing.contrast}
+                                  min={0.5}
+                                  max={2}
+                                  step={0.1}
+                                  onChange={(v) => updatePreprocessing('contrast', v)}
+                                  isDisabled={isProcessing}
+                                  flex="1"
+                                  mr={2}
+                                >
+                                  <SliderTrack>
+                                    <SliderFilledTrack />
+                                  </SliderTrack>
+                                  <SliderThumb />
+                                </Slider>
+                                <NumberInput
+                                  value={preprocessing.contrast}
+                                  min={0.5}
+                                  max={2}
+                                  step={0.1}
+                                  onChange={(_, val) => updatePreprocessing('contrast', val)}
+                                  isDisabled={isProcessing}
+                                  size="sm"
+                                  maxW="70px"
+                                >
+                                  <NumberInputField />
+                                  <NumberInputStepper>
+                                    <NumberIncrementStepper />
+                                    <NumberDecrementStepper />
+                                  </NumberInputStepper>
+                                </NumberInput>
+                              </Flex>
+                            </FormControl>
+                          </Box>
+                          
+                          {preprocessing.binarize && (
+                            <Box>
+                              <FormControl>
+                                <FormLabel fontSize="sm">Threshold</FormLabel>
+                                <Flex>
+                                  <Slider
+                                    value={preprocessing.threshold}
+                                    min={0}
+                                    max={255}
+                                    step={1}
+                                    onChange={(v) => updatePreprocessing('threshold', v)}
                   isDisabled={isProcessing || preprocessing.adaptiveThreshold}
-                  flex="1"
-                  mr={2}
-                >
-                  <SliderTrack>
-                    <SliderFilledTrack />
-                  </SliderTrack>
-                  <SliderThumb />
-                </Slider>
-                <NumberInput
-                  value={preprocessing.threshold}
-                  min={0}
-                  max={255}
-                  step={1}
-                  onChange={(_, val) => updatePreprocessing('threshold', val)}
+                                    flex="1"
+                                    mr={2}
+                                  >
+                                    <SliderTrack>
+                                      <SliderFilledTrack />
+                                    </SliderTrack>
+                                    <SliderThumb />
+                                  </Slider>
+                                  <NumberInput
+                                    value={preprocessing.threshold}
+                                    min={0}
+                                    max={255}
+                                    step={1}
+                                    onChange={(_, val) => updatePreprocessing('threshold', val)}
                   isDisabled={isProcessing || preprocessing.adaptiveThreshold}
-                  size="sm"
-                  maxW="70px"
-                >
-                  <NumberInputField />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-              </Flex>
-            </FormControl>
-          </Box>
-        )}
-        
-        <Box>
-          <FormControl>
-            <FormLabel fontSize="sm">Scale Factor</FormLabel>
-            <Flex>
-              <Slider
-                value={preprocessing.scale}
-                min={1}
-                max={3}
-                step={0.5}
-                onChange={(v) => updatePreprocessing('scale', v)}
-                isDisabled={isProcessing}
-                flex="1"
-                mr={2}
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-              <NumberInput
-                value={preprocessing.scale}
-                min={1}
-                max={3}
-                step={0.5}
-                onChange={(_, val) => updatePreprocessing('scale', val)}
-                isDisabled={isProcessing}
-                size="sm"
-                maxW="70px"
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </Flex>
-          </FormControl>
-        </Box>
-        
-        <FormControl display="flex" alignItems="center">
-          <FormLabel htmlFor="deskew" mb="0" fontSize="sm">
-            Auto-Deskew
-          </FormLabel>
-          <Switch 
-            id="deskew"
-            isChecked={preprocessing.deskew}
-            onChange={(e) => updatePreprocessing('deskew', e.target.checked)}
-            isDisabled={isProcessing}
-            colorScheme="blue"
-          />
-        </FormControl>
-      </Grid>
+                                    size="sm"
+                                    maxW="70px"
+                                  >
+                                    <NumberInputField />
+                                    <NumberInputStepper>
+                                      <NumberIncrementStepper />
+                                      <NumberDecrementStepper />
+                                    </NumberInputStepper>
+                                  </NumberInput>
+                                </Flex>
+                              </FormControl>
+                            </Box>
+                          )}
+                          
+                          <Box>
+                            <FormControl>
+                              <FormLabel fontSize="sm">Scale Factor</FormLabel>
+                              <Flex>
+                                <Slider
+                                  value={preprocessing.scale}
+                                  min={1}
+                                  max={3}
+                                  step={0.5}
+                                  onChange={(v) => updatePreprocessing('scale', v)}
+                                  isDisabled={isProcessing}
+                                  flex="1"
+                                  mr={2}
+                                >
+                                  <SliderTrack>
+                                    <SliderFilledTrack />
+                                  </SliderTrack>
+                                  <SliderThumb />
+                                </Slider>
+                                <NumberInput
+                                  value={preprocessing.scale}
+                                  min={1}
+                                  max={3}
+                                  step={0.5}
+                                  onChange={(_, val) => updatePreprocessing('scale', val)}
+                                  isDisabled={isProcessing}
+                                  size="sm"
+                                  maxW="70px"
+                                >
+                                  <NumberInputField />
+                                  <NumberInputStepper>
+                                    <NumberIncrementStepper />
+                                    <NumberDecrementStepper />
+                                  </NumberInputStepper>
+                                </NumberInput>
+                              </Flex>
+                            </FormControl>
+                          </Box>
+                          
+                          <FormControl display="flex" alignItems="center">
+                            <FormLabel htmlFor="deskew" mb="0" fontSize="sm">
+                              Auto-Deskew
+                            </FormLabel>
+                            <Switch 
+                              id="deskew"
+                              isChecked={preprocessing.deskew}
+                              onChange={(e) => updatePreprocessing('deskew', e.target.checked)}
+                              isDisabled={isProcessing}
+                              colorScheme="blue"
+                            />
+                          </FormControl>
+                        </Grid>
     );
   };
 
+  // Function to determine the best OCR model based on image content analysis
+  const selectOCRModel = async (imageSrc: string): Promise<string> => {
+    const img = new Image();
+    img.src = imageSrc;
+    await new Promise((resolve) => {
+      img.onload = resolve;
+    });
+
+    // Get a small version of the image for analysis
+    const canvas = document.createElement('canvas');
+    const maxDim = 500; // Analyze at a reasonable resolution
+    const scale = maxDim / Math.max(img.width, img.height);
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 'default';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    
+    // Analyze image characteristics
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Check characteristics for text-dense images (like MCQs)
+    let textDensity = 0;
+    let blackPixelCount = 0;
+    let totalPixels = data.length / 4;
+    
+    // Count dark pixels as potential text
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (luminance < 120) { // Dark pixels
+        blackPixelCount++;
+      }
+    }
+    
+    textDensity = blackPixelCount / totalPixels;
+    
+    // Check for horizontal lines that might indicate MCQ options
+    let horizontalLines = 0;
+    const lineThreshold = 20; // Minimum length for a horizontal line
+    
+    for (let y = 0; y < canvas.height; y++) {
+      let consecutiveDarkPixels = 0;
+      for (let x = 0; x < canvas.width; x++) {
+        const idx = (y * canvas.width + x) * 4;
+        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        
+        if (luminance < 120) {
+          consecutiveDarkPixels++;
+        } else {
+          if (consecutiveDarkPixels >= lineThreshold) {
+            horizontalLines++;
+          }
+          consecutiveDarkPixels = 0;
+        }
+      }
+      // Check end of line
+      if (consecutiveDarkPixels >= lineThreshold) {
+        horizontalLines++;
+      }
+    }
+    
+    // Check for isolated blobs (potential MCQ circles or option indicators)
+    let isolatedBlobs = 0;
+    const blobMinSize = 5;
+    const blobMaxSize = 30;
+    const visited = new Set<string>();
+    
+    // Simple blob detection
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const idx = (y * canvas.width + x) * 4;
+        const pixelKey = `${x},${y}`;
+        
+        // Skip visited pixels
+        if (visited.has(pixelKey)) continue;
+        
+        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        
+        // If dark pixel, start flood fill to check if it's a blob
+        if (luminance < 120) {
+          const blobSize = floodFill(x, y, canvas.width, canvas.height, data, visited);
+          if (blobSize >= blobMinSize && blobSize <= blobMaxSize) {
+            isolatedBlobs++;
+          }
+        }
+        
+        visited.add(pixelKey);
+      }
+    }
+    
+    // Calculate horizontal text characteristic
+    const horizontalTextScore = horizontalLines > 10 ? 1 : horizontalLines / 10;
+    
+    // Detect column layout - check if text is organized in columns
+    let columnDetectionScore = 0;
+    
+    // Vertical projection (sum of dark pixels in each column)
+    const columnProjection = new Array(canvas.width).fill(0);
+    for (let x = 0; x < canvas.width; x++) {
+      for (let y = 0; y < canvas.height; y++) {
+        const idx = (y * canvas.width + x) * 4;
+        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        if (luminance < 120) {
+          columnProjection[x]++;
+        }
+      }
+    }
+    
+    // Check for peaks and valleys in the column projection
+    let peakCount = 0;
+    const peakThreshold = canvas.height * 0.05; // Minimum height for a peak
+    
+    for (let x = 5; x < canvas.width - 5; x++) {
+      // Check if this point is higher than its neighbors (simple peak detection)
+      if (columnProjection[x] > peakThreshold && 
+          columnProjection[x] > columnProjection[x-5] && 
+          columnProjection[x] > columnProjection[x+5]) {
+        peakCount++;
+      }
+    }
+    
+    // Multiple peaks indicate possible column layout
+    columnDetectionScore = peakCount >= 3 ? 1 : peakCount / 3;
+    
+    // Check for vocabulary MCQ characteristics:
+    // 1. High text density
+    // 2. Presence of option indicators (MCQ circles or option letters)
+    // 3. Horizontal lines of text (options)
+    // 4. Not a lot of column structure
+    const vocabularyMCQScore = (textDensity > 0.12 ? 1 : textDensity / 0.12) * 0.4 +
+                               (isolatedBlobs > 3 ? 1 : isolatedBlobs / 3) * 0.3 +
+                               horizontalTextScore * 0.2 +
+                               (1 - columnDetectionScore) * 0.1;
+    
+    // Check for math/formula characteristics
+    let mathSymbolScore = 0;
+    
+    // Analyze small regions of the image for potential math symbols
+    const regionSize = 10;
+    for (let y = 0; y < canvas.height - regionSize; y += regionSize) {
+      for (let x = 0; x < canvas.width - regionSize; x += regionSize) {
+        let darkPixelsInRegion = 0;
+        let totalRegionPixels = regionSize * regionSize;
+        
+        // Count dark pixels in this region
+        for (let dy = 0; dy < regionSize; dy++) {
+          for (let dx = 0; dx < regionSize; dx++) {
+            const idx = ((y + dy) * canvas.width + (x + dx)) * 4;
+            const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+            if (luminance < 120) {
+              darkPixelsInRegion++;
+            }
+          }
+        }
+        
+        // If a region has a moderate proportion of dark pixels, it might be a math symbol
+        const regionDensity = darkPixelsInRegion / totalRegionPixels;
+        if (regionDensity > 0.3 && regionDensity < 0.7) {
+          mathSymbolScore += 1;
+        }
+      }
+    }
+    
+    // Normalize math symbol score
+    mathSymbolScore = Math.min(1, mathSymbolScore / 20);
+    
+    // Final decision
+    if (vocabularyMCQScore > 0.7) {
+      return 'vocabulary-mcq';  // Use the specialized model for vocabulary MCQs
+    } else if (textDensity > 0.15 && horizontalTextScore > 0.6) {
+      return 'ultra-accurate'; // Dense text with horizontal structure
+    } else if (mathSymbolScore > 0.5) {
+      return 'math-formula'; // Math content
+    } else if (textDensity < 0.08) {
+      return 'fast'; // Low text density
+    } else {
+      return 'default'; // Default balanced approach
+    }
+  };
+  
+  // Helper function for blob detection using flood fill
+  const floodFill = (
+    startX: number, 
+    startY: number, 
+    width: number, 
+    height: number, 
+    data: Uint8ClampedArray, 
+    visited: Set<string>
+  ): number => {
+    const queue: [number, number][] = [[startX, startY]];
+    let size = 0;
+    
+    while (queue.length > 0) {
+      const [x, y] = queue.shift()!;
+      const pixelKey = `${x},${y}`;
+      
+      if (visited.has(pixelKey)) continue;
+      
+      visited.add(pixelKey);
+      
+      const idx = (y * width + x) * 4;
+      const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      
+      if (luminance >= 120) continue; // Skip light pixels
+      
+      size++;
+      
+      // Check neighbors
+      const neighbors = [
+        [x+1, y], [x-1, y], [x, y+1], [x, y-1]
+      ];
+      
+      for (const [nx, ny] of neighbors) {
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const neighborKey = `${nx},${ny}`;
+          if (!visited.has(neighborKey)) {
+            queue.push([nx, ny]);
+          }
+        }
+      }
+    }
+    
+    return size;
+  };
+
   return (
-    <VStack spacing={[3, 4, 6]} w="full" px={[2, 4, 6]}>
+    <VStack spacing={6} w="full">
       {/* Header with app info */}
       <Box 
         w="full" 
         bg="blue.600" 
-        p={[3, 4]} 
+        p={4} 
         borderRadius="md" 
         boxShadow="md"
         color="white"
       >
-        <Flex justifyContent="space-between" alignItems="center" flexDirection={["column", "column", "row"]}>
-          <Box mb={[2, 2, 0]}>
-            <Heading size={["md", "lg"]}>Image to Text Converter</Heading>
-            <Text mt={1} fontSize={["xs", "sm"]}>Advanced OCR with AI-powered enhancement</Text>
+        <Flex justifyContent="space-between" alignItems="center">
+          <Box>
+            <Heading size="lg">Image to Text Converter</Heading>
+            <Text mt={1}>Advanced OCR with AI-powered enhancement</Text>
           </Box>
-          <HStack spacing={2} mt={[2, 2, 0]}>
-            <Badge colorScheme="red" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
+          <HStack spacing={2}>
+            <Badge colorScheme="red" p={2} borderRadius="md" fontSize="sm">
               Fast
             </Badge>
-            <Badge colorScheme="blue" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
+            <Badge colorScheme="blue" p={2} borderRadius="md" fontSize="sm">
               Balanced
             </Badge>
-            <Badge colorScheme="green" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
+            <Badge colorScheme="green" p={2} borderRadius="md" fontSize="sm">
               Ultra Accurate
             </Badge>
           </HStack>
@@ -1640,12 +2106,12 @@ export default function ImageToText() {
       {/* Drop area */}
       <Box
         w="full"
-        h={["150px", "175px", "200px"]}
+        h="200px"
         border="2px dashed"
         borderColor={isDragActive ? 'blue.500' : 'gray.200'}
         borderRadius="md"
         bg={isDragActive ? 'blue.50' : 'white'}
-        p={[2, 3, 4]}
+        p={4}
         textAlign="center"
         display="flex"
         flexDirection="column"
@@ -1670,34 +2136,34 @@ export default function ImageToText() {
           ref={fileInputRef}
           display="none"
         />
-        <Box fontSize={["3xl", "4xl", "5xl"]} color="blue.500">
+        <Box fontSize="5xl" color="blue.500">
           📄
         </Box>
-        <Text fontWeight="medium" mt={2} color="gray.700" fontSize={["sm", "md"]}>
+        <Text fontWeight="medium" mt={2} color="gray.700">
           Click to upload or drag & drop images here
         </Text>
-        <Text fontSize={["xs", "sm"]} mt={1} color="gray.500">
+        <Text fontSize="sm" mt={1} color="gray.500">
           Supports JPEG, PNG, WEBP, GIF, BMP (up to {MAX_IMAGES} files)
         </Text>
-        <Text fontSize={["2xs", "xs"]} mt={2} color="blue.500" display={["none", "block"]}>
+        <Text fontSize="xs" mt={2} color="blue.500">
           Pro tip: You can also paste images directly from your clipboard
         </Text>
       </Box>
       
       {/* Display error if files are too many */}
       {images.length >= MAX_IMAGES && (
-        <Box w="full" p={2} bg="yellow.100" color="yellow.800" borderRadius="md" fontSize={["xs", "sm"]}>
-          <Text>Maximum image limit reached ({MAX_IMAGES}).</Text>
-        </Box>
-      )}
+        <Box w="full" p={3} bg="yellow.100" color="yellow.800" borderRadius="md">
+          <Text fontSize="sm">Maximum image limit reached ({MAX_IMAGES}).</Text>
+                    </Box>
+                  )}
 
       {/* OCR Settings */}
-      <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
+      <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
         <Accordion allowToggle defaultIndex={[0]}>
           <AccordionItem border="none">
             <h2>
               <AccordionButton px={0}>
-                <Box flex="1" textAlign="left" fontWeight="medium" fontSize={["sm", "md"]}>
+                <Box flex="1" textAlign="left" fontWeight="medium">
                   OCR Settings
                 </Box>
                 <AccordionIcon />
@@ -1707,11 +2173,11 @@ export default function ImageToText() {
               <VStack spacing={4} align="stretch">
                 {/* OCR Model Selection */}
                 <Box>
-                  <Text fontSize={["xs", "sm"]} mb={1} fontWeight="medium">OCR Processing Model</Text>
+                  <Text fontSize="sm" mb={1} fontWeight="medium">OCR Processing Model</Text>
                   <Select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    size={["xs", "sm"]}
+                    size="sm"
                     isDisabled={isProcessing}
                   >
                     {Object.entries(OCR_MODELS).map(([key, model]) => (
@@ -1723,13 +2189,13 @@ export default function ImageToText() {
                 </Box>
                 
                 {/* Language Selection */}
-                <Grid templateColumns={["1fr", "1fr", "1fr 1fr"]} gap={[2, 4]}>
+                <Grid templateColumns={["1fr", null, "1fr 1fr"]} gap={4}>
                   <Box>
-                    <Text fontSize={["xs", "sm"]} mb={1}>Language</Text>
+                    <Text fontSize="sm" mb={1}>Language</Text>
                     <Select
                       value={selectedLanguage}
                       onChange={(e) => setSelectedLanguage(e.target.value)}
-                      size={["xs", "sm"]}
+                      size="sm"
                       isDisabled={isProcessing}
                     >
                       {Object.entries(OCR_LANGUAGES).map(([value, label]) => (
@@ -1746,7 +2212,7 @@ export default function ImageToText() {
                 
                 <Box>
                   <FormControl display="flex" alignItems="center">
-                    <FormLabel htmlFor="detect-tables" mb="0" fontSize={["xs", "sm"]}>
+                    <FormLabel htmlFor="detect-tables" mb="0" fontSize="sm">
                       Detect Tables
                     </FormLabel>
                     <Switch 
@@ -1760,7 +2226,7 @@ export default function ImageToText() {
                 </Box>
                 <Box>
                   <FormControl display="flex" alignItems="center">
-                    <FormLabel htmlFor="ai-enhancement" mb="0" fontSize={["xs", "sm"]}>
+                    <FormLabel htmlFor="ai-enhancement" mb="0" fontSize="sm">
                       Use AI Enhancement
                     </FormLabel>
                     <Switch 
@@ -1775,11 +2241,11 @@ export default function ImageToText() {
                 
                 {detectTables && (
                   <Box gridColumn={["1", null, "span 2"]}>
-                    <Text fontSize={["xs", "sm"]} mb={1}>Table Output Format</Text>
+                    <Text fontSize="sm" mb={1}>Table Output Format</Text>
                     <Select
                       value={tableFormat}
                       onChange={(e) => setTableFormat(e.target.value)}
-                      size={["xs", "sm"]}
+                      size="sm"
                       isDisabled={isProcessing || !detectTables}
                     >
                       {Object.entries(TABLE_FORMATS).map(([value, label]) => (
@@ -1801,14 +2267,14 @@ export default function ImageToText() {
 
       {/* Image Preview Grid */}
       {images.length > 0 && (
-        <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
-          <Flex justify="space-between" mb={3} align="center" flexDirection={["column", "row"]}>
-            <Text fontWeight="medium" fontSize={["sm", "md"]} mb={[2, 0]}>
+        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <Flex justify="space-between" mb={3} align="center">
+            <Text fontWeight="medium">
               Images ({images.length}/{MAX_IMAGES})
             </Text>
-            <HStack spacing={[1, 2]}>
+            <HStack>
               <Button 
-                size={["xs", "sm"]} 
+                size="sm" 
                 colorScheme="red" 
                 variant="outline" 
                 onClick={handleReset}
@@ -1817,7 +2283,7 @@ export default function ImageToText() {
                 Clear All
               </Button>
               <Button 
-                size={["xs", "sm"]} 
+                size="sm" 
                 colorScheme="blue" 
                 onClick={processImages}
                 isLoading={isProcessing}
@@ -1830,22 +2296,21 @@ export default function ImageToText() {
           </Flex>
 
           <Grid 
-            templateColumns={["repeat(auto-fill, minmax(100px, 1fr))", "repeat(auto-fill, minmax(120px, 1fr))", "repeat(auto-fill, minmax(150px, 1fr))"]} 
-            gap={[2, 3, 4]}
-            maxH={["200px", "250px", "300px"]}
+            templateColumns="repeat(auto-fill, minmax(150px, 1fr))" 
+            gap={4}
+            maxH="300px"
             overflowY="auto"
             pb={2}
-            className="hide-scrollbar"
           >
             {images.map((image) => (
               <Box key={image.id} borderWidth="1px" borderRadius="lg" overflow="hidden" bg="white" boxShadow="sm">
-                <Box p={[1, 2]}>
+                <Box p={2}>
                   <Box position="relative">
                     <ChakraImage 
                       src={image.preprocessed || image.preview}
                       alt={image.file.name}
                       objectFit="cover"
-                      height={["70px", "85px", "100px"]}
+                      height="100px"
                       width="full"
                       borderRadius="md"
                       opacity={image.processing ? 0.5 : 1}
@@ -1861,7 +2326,7 @@ export default function ImageToText() {
                         align="center"
                         bg="blackAlpha.200"
                       >
-                        <Text fontSize={["2xs", "xs"]} fontWeight="bold">Processing...</Text>
+                        <Text fontSize="xs" fontWeight="bold">Processing...</Text>
                       </Flex>
                     )}
                     {image.error && (
@@ -1870,7 +2335,7 @@ export default function ImageToText() {
                         position="absolute" 
                         top="1" 
                         right="1"
-                        fontSize={["2xs", "xs"]}
+                        fontSize="xs"
                       >
                         Error
                       </Badge>
@@ -1881,7 +2346,7 @@ export default function ImageToText() {
                         position="absolute" 
                         top="1" 
                         right="1"
-                        fontSize={["2xs", "xs"]}
+                        fontSize="xs"
                       >
                         Processed
                       </Badge>
@@ -1892,7 +2357,7 @@ export default function ImageToText() {
                         position="absolute" 
                         bottom="1" 
                         right="1"
-                        fontSize={["2xs", "xs"]}
+                        fontSize="xs"
                       >
                         Enhanced
                       </Badge>
@@ -1911,13 +2376,13 @@ export default function ImageToText() {
                   </Box>
                   <Tooltip label={image.file.name}>
                     <Text 
-                      fontSize={["2xs", "xs"]}
+                      fontSize="xs" 
                       isTruncated 
                       mt={1} 
                       textAlign="center"
                     >
-                      {image.file.name.substring(0, 15)}
-                      {image.file.name.length > 15 ? '...' : ''}
+                      {image.file.name.substring(0, 20)}
+                      {image.file.name.length > 20 ? '...' : ''}
                     </Text>
                   </Tooltip>
                 </Box>
@@ -1929,8 +2394,8 @@ export default function ImageToText() {
 
       {/* Progress Bar */}
       {isProcessing && (
-        <Box w="full" bg="white" p={[2, 3, 4]} borderRadius="md" boxShadow="sm">
-          <Text mb={1} fontSize={["xs", "sm"]}>
+        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <Text mb={1} fontSize="sm">
             Processing images ({Math.round(progress)}%)
           </Text>
           <Progress value={progress} size="sm" colorScheme="blue" borderRadius="md" />
@@ -1939,42 +2404,41 @@ export default function ImageToText() {
 
       {/* Results */}
       {combinedText && (
-        <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
-          <Flex justify="space-between" mb={3} align="center" flexDirection={["column", "row"]}>
-            <Text fontWeight="medium" fontSize={["sm", "md"]} mb={[2, 0]}>Extracted Text</Text>
-            <HStack spacing={[1, 2]} mt={[2, 0]}>
+        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <Flex justify="space-between" mb={3} align="center">
+              <Text fontWeight="medium">Extracted Text</Text>
+            <HStack spacing={2}>
               {processingMetrics.confidence && (
-                <Badge colorScheme="green" fontSize={["2xs", "xs"]}>
+                <Badge colorScheme="green">
                   Confidence: {processingMetrics.confidence.toFixed(1)}%
                 </Badge>
               )}
               <Button 
-                size={["xs", "sm"]} 
+                size="sm" 
                 leftIcon={<span>📋</span>} 
                 onClick={copyToClipboard}
                 colorScheme="blue"
                 variant="outline"
               >
-                Copy All
-              </Button>
+              Copy All
+            </Button>
             </HStack>
           </Flex>
           
           <Textarea
             value={combinedText}
             onChange={(e) => setCombinedText(e.target.value)}
-            rows={10}
+            rows={12}
             resize="vertical"
             borderColor="gray.300"
             _hover={{ borderColor: 'gray.400' }}
             borderRadius="md"
             fontFamily="monospace"
-            fontSize={["xs", "sm"]}
-            minH={["150px", "200px", "250px"]}
+            fontSize="sm"
           />
           
           {processingMetrics.totalTime && (
-            <Text fontSize={["2xs", "xs"]} color="gray.500" mt={2} textAlign="right">
+            <Text fontSize="xs" color="gray.500" mt={2} textAlign="right">
               Processed in {processingMetrics.totalTime.toFixed(1)} seconds
             </Text>
           )}
@@ -1985,18 +2449,17 @@ export default function ImageToText() {
       <Box 
         w="full" 
         bg="gray.50" 
-        p={[3, 4]} 
+        p={4} 
         borderRadius="md" 
         boxShadow="sm" 
-        mt={[3, 4, 6]}
-        fontSize={["xs", "sm"]}
+        mt={6}
       >
         <Flex 
           direction={["column", "row"]} 
           justifyContent="space-between" 
           alignItems={["center", "flex-start"]}
         >
-          <Box textAlign={["center", "left"]} mb={[2, 0]}>
+          <Box textAlign={["center", "left"]} mb={[4, 0]}>
             <Text fontWeight="bold">Developed by:</Text>
             <Text>Swastik Raj</Text>
             <Text>Vansh Singh</Text>
