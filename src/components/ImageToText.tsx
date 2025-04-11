@@ -140,6 +140,65 @@ const OCR_MODELS = {
       }
     ]
   },
+  'mcq': {
+    name: 'MCQ Optimized',
+    description: 'Best for multiple-choice questions',
+    engineConfig: {
+      tessedit_pageseg_mode: '6',
+      preserve_interword_spaces: '1',
+      tessjs_create_hocr: '1',
+      tessjs_create_tsv: '0',
+      textord_tabfind_find_tables: '0',
+      tessedit_char_whitelist: '', 
+      tessedit_fix_fuzzy_spaces: '1',
+      textord_space_size_is_variable: '1',
+      textord_min_linesize: '2.0',
+      tessedit_prefer_joined_punct: '0',
+      tessedit_write_block_separators: '1',
+      tessedit_enable_doc_dict: '1',
+      tessedit_unrej_any_wd: '1',          
+      edges_max_children_per_outline: '40', 
+      tessedit_char_blacklist: 'il│|¦'
+    },
+    preprocessConfigs: [
+      { 
+        enabled: false,
+        grayscale: false,
+        contrast: 1,
+        binarize: false,
+        threshold: 128,
+        scale: 1,
+        deskew: false,
+        denoise: false,
+        adaptiveThreshold: false,
+        sharpen: false
+      },
+      { 
+        enabled: true, 
+        grayscale: true, 
+        contrast: 1.5, 
+        binarize: false,
+        threshold: 150,
+        scale: 2.0,
+        deskew: true,
+        denoise: false,
+        adaptiveThreshold: false,
+        sharpen: true
+      },
+      {
+        enabled: true,
+        grayscale: true,
+        contrast: 1.8,
+        binarize: true,
+        threshold: 175,
+        scale: 2.5,
+        deskew: true,
+        denoise: true,
+        adaptiveThreshold: false,
+        sharpen: true
+      }
+    ]
+  },
   'balanced': {
     name: 'Balanced',
     description: 'Good mix of speed and accuracy',
@@ -273,72 +332,17 @@ const OCR_MODELS = {
         adaptiveThreshold: true,
         sharpen: true
       },
-      // Special MCQ configuration optimized for vocabulary questions
+      // Special MCQ configuration 
       {
         enabled: true,
         grayscale: true,
-        contrast: 2.2,
+        contrast: 2.0,
         binarize: true,
-        threshold: 210,
-        scale: 3.5,
-        deskew: true,
-        denoise: false,
-        adaptiveThreshold: false,
-        sharpen: true
-      }
-    ]
-  },
-  'vocabulary-mcq': {
-    name: 'Vocabulary MCQ',
-    description: 'Optimized for text-heavy MCQs',
-    engineConfig: {
-      tessedit_pageseg_mode: '4',  // Single column of text
-      preserve_interword_spaces: '1',
-      tessjs_create_hocr: '1',
-      tessedit_fix_fuzzy_spaces: '1',
-      textord_space_size_is_variable: '1',
-      textord_min_linesize: '2.0',
-      tessedit_enable_doc_dict: '1',
-      tessedit_unrej_any_wd: '1',
-      tessedit_char_blacklist: 'il│|¦',
-      textord_force_xmin: '0',
-      tessedit_write_block_separators: '1'
-    },
-    preprocessConfigs: [
-      { 
-        enabled: false,
-        grayscale: false,
-        contrast: 1,
-        binarize: false,
-        threshold: 128,
-        scale: 1,
-        deskew: false,
-        denoise: false,
-        adaptiveThreshold: false,
-        sharpen: false
-      },
-      { 
-        enabled: true, 
-        grayscale: true, 
-        contrast: 1.6, 
-        binarize: false,
-        threshold: 150,
-        scale: 2.5,
-        deskew: true,
-        denoise: false,
-        adaptiveThreshold: false,
-        sharpen: true
-      },
-      {
-        enabled: true,
-        grayscale: true,
-        contrast: 1.8,
-        binarize: true,
-        threshold: 170,
+        threshold: 200,
         scale: 3.0,
         deskew: true,
-        denoise: true,
-        adaptiveThreshold: true,
+        denoise: false,
+        adaptiveThreshold: false,
         sharpen: true
       }
     ]
@@ -1239,8 +1243,8 @@ export default function ImageToText() {
     let enhancedText = text;
 
     // Check if text contains a multiple choice question pattern
-    const hasMCQPattern = /(?:\d+\s*[\.\)]\s*.*?\n\s*(?:[A-Z][\.\)]\s*.*?\n){2,})/s.test(text) || 
-                         /(?:\n\s*[A-Z][\.\)]\s*.*?){3,}/s.test(text);
+    const hasMCQPattern = /(?:\d+\s*[\.\)]\s*.*?\n\s*(?:[A-Z][\.\)]\s*.*?\n){2,})/g.test(text) || 
+                         /(?:\n\s*[A-Z][\.\)]\s*.*?){3,}/g.test(text);
     
     // Check if text contains mathematical content
     const hasMathContent = /((?:\d+\s*[+\-×÷=\^])|(?:\d+\.\d+)|(?:\(\d+\))|(?:[<>]=?)|(?:\d+\s*\/\s*\d+))/g.test(text);
@@ -1291,57 +1295,41 @@ export default function ImageToText() {
   const enhanceMCQText = (text: string): string => {
     // STAGE 1: Pre-processing and pattern detection
     
-    // 1.1: Identify if this is a common aptitude test format or vocabulary MCQ
+    // 1.1: Identify if this is a common aptitude test format
     const isAptitudeTest = /(?:multiple|average|length|shadow|height|building|number|calculate|find)/i.test(text);
-    const isVocabularyMCQ = /(?:meaning|opposite|closest|synonym|antonym|definition|choose|word|option|mark)/i.test(text);
     
     // 1.2: Normalize whitespace and line breaks
     text = text.replace(/\n{3,}/g, '\n\n'); // Reduce excessive line breaks
     text = text.replace(/[ \t]{2,}/g, ' '); // Normalize multiple spaces
     
-    // 1.3: Detect and fix specific patterns of formatted text
+    // 1.3: Detect specific question patterns
     const containsNumberedQuestions = /\d+[\.\)]\s+[A-Za-z]/.test(text);
     const containsMCQOptions = /[A-D][\.\)]\s+\w/.test(text);
+    const containsWordSynonymQuestions = /(?:closest|opposite|meaning|synonym|antonym)/i.test(text);
     
     // 1.4: Fix common scanning issues with MCQ option labels
     text = text.replace(/\b([oO0])[\.\)]\s+/g, 'D. '); // Replace o. or 0. with D.
     text = text.replace(/\b([®Θ@])\s*/g, 'A. '); // Replace common OCR errors for A
     text = text.replace(/\b([©])\s*/g, 'C. '); // Replace © with C
-    text = text.replace(/\b[Ππn][\.\)]\s+/g, 'B. '); // Fix Pi symbol recognized as B
-    text = text.replace(/\bS[\.\)]\s+/g, 'B. '); // Fix S recognized as B
-    text = text.replace(/\b[Cc][\.\)]\s+/g, 'C. '); // Standardize C format
     
+    // 1.5: Special handling for word meaning/synonym/antonym format
+    if (containsWordSynonymQuestions) {
+      // Find WORD patterns (all caps word followed by options)
+      text = text.replace(/([A-Z]{2,})\s*\n/g, '$1\n\n');
+      
+      // Fix option formatting for word meaning questions
+      text = text.replace(/(?:Opts|Opc|Opp|0ps)[:;.,]?\s*/gi, 'Options: ');
+      
+      // Make sure the question text is properly formatted
+      text = text.replace(/(?:Q|0)\s*(\d+)[\.\)]\s*/gi, 'Q $1) ');
+      
+      // Format "WORD" patterns to stand out
+      text = text.replace(/(?:HOSTILE|GROVEL|[A-Z]{3,})/g, (match) => `\n${match}\n`);
+    }
+
     // STAGE 2: Content-specific fixes
     
-    // Special cleanup for vocabulary questions
-    if (isVocabularyMCQ) {
-      // Fix question numbering for vocabulary MCQs (e.g., Q 21. → Q 21.)
-      text = text.replace(/(?:Q|O)[\s\.]*(\d+)[\.\s]*(?=[A-Za-z])/g, 'Q $1. ');
-      
-      // Fix common vocabulary instruction text
-      text = text.replace(/(?:Mark|choose)[\s]+the[\s]+option[\s]+which[\s]+is[\s]+closest[\s]+to[\s]+(?:meaning|opposite)/gi, 
-                         'Mark the option which is closest to the meaning');
-      
-      // Fix missing spaces after question numbers
-      text = text.replace(/(\d+)[\.\):](?=[A-Za-z])/g, '$1. ');
-      
-      // Fix option circle recognition - common in vocabulary MCQs
-      text = text.replace(/[○oO0]\s*([A-Za-z])/g, '○ $1');  // Fix spacing for circle options
-      
-      // Fix vocabulary-specific words that are commonly misrecognized
-      text = text.replace(/[Hh][Oo][Ss][Tt][li1][Ll][Ee]/g, 'HOSTILE');
-      text = text.replace(/[Oo][Pp][Pp][Oo][Ss][li1][Nn][Gg]/g, 'Opposing');
-      text = text.replace(/[Tt][Rr][Aa][Uu][Mm][Aa][Tt][li1][Cc]/g, 'Traumatic');
-      text = text.replace(/[Ww][Ee][Ll][Cc][Oo][Mm][Ee][Dd]/g, 'Welcomed');
-      text = text.replace(/[Hh][Aa][Pp][Pp][Yy]/g, 'Happy');
-      text = text.replace(/[Gg][Rr][Oo][Vv][Ee][Ll]/g, 'GROVEL');
-      text = text.replace(/[Aa][Ss][Kk]/g, 'Ask');
-      text = text.replace(/[Gg][li1][Vv][Ee]/g, 'Give');
-      text = text.replace(/[Ee][Ss][Tt][Aa][Bb][Ll][li1][Ss][Hh]/g, 'Establish');
-      text = text.replace(/[Bb][Rr][Ee][Aa][Kk]/g, 'Break');
-    }
-    
-    // Apply original aptitude test fixes
+    // 2.1: Fix numeric recognition (especially important for aptitude tests)
     if (isAptitudeTest) {
       // Fix for aptitude test number formats
       text = text.replace(/(\d+)[\s\.]?[,;][\s\.]?(\d+)/g, '$1.$2'); // Fix decimal points
@@ -1379,39 +1367,56 @@ export default function ImageToText() {
     // 2.5: Fix option alignment - ensure options are on separate lines
     text = text.replace(/([A-D])\.\s+([^A-D\n]+)([A-D])\./g, '$1. $2\n$3.'); // Separate run-together options
     
-    // STAGE 3: Vocabulary MCQ specific processing
-    if (isVocabularyMCQ) {
-      // Detect if the MCQ uses a specific format with circled options
-      const hasCircledOptions = /[○⚪⭕◯]/g.test(text);
-      
-      if (hasCircledOptions) {
-        // Convert circled options to standard format
-        text = text.replace(/\s*[○⚪⭕◯]\s*([A-D])[\.:]?\s*/g, '$1. ');
-      }
-      
-      // Handle special vocabulary numbering (Q 21, Q 22, etc.)
-      text = text.replace(/Q\s*(\d+)[\.\s]*/g, 'Q $1. ');
-      
-      // Fix "Opts:" or "Opts." format
-      text = text.replace(/(?:Opts|Opc|Opc)[\.:]\s*/gi, 'Options: ');
-      
-      // Better handling of word/definition pairs
-      // For cases like "HOSTILE" followed by options
+    // 2.6: Handle multi-column layout
+    // Detect if we have multiple columns of MCQs
+    if (text.includes("Q 21") && text.includes("Q 22")) {
+      // Try to split text into left and right columns
       const lines = text.split('\n');
+      const columnLines: {left: string[], right: string[]} = {left: [], right: []};
+      
+      // Identify which lines belong to which column
       for (let i = 0; i < lines.length; i++) {
-        // If line is a single uppercase word, probably the question word
-        if (/^[A-Z]{4,}$/.test(lines[i].trim()) && i + 1 < lines.length) {
-          // Check if the next line doesn't look like a question
-          if (!/^Q\s*\d+|^\d+[\.\)]/.test(lines[i+1].trim())) {
-            // Format as proper question
-            lines[i] = `Definition of: ${lines[i].trim()}`;
+        const line = lines[i].trim();
+        if (line.match(/Q\s*2[12]\./)) {
+          // This suggests we're at the start of our columns
+          // Process the rest of the lines as columns
+          let currentColumn = 'left';
+          
+          for (let j = i; j < lines.length; j++) {
+            const currentLine = lines[j].trim();
+            
+            // If we see a line with "Q 22", switch to right column
+            if (currentLine.match(/Q\s*22\./)) {
+              currentColumn = 'right';
+            }
+            
+            // Add to appropriate column
+            if (currentColumn === 'left') {
+              columnLines.left.push(currentLine);
+            } else {
+              columnLines.right.push(currentLine);
+            }
           }
+          
+          // Stop processing lines
+          break;
+        } else {
+          // Add to left column by default for header content
+          columnLines.left.push(line);
         }
       }
-      text = lines.join('\n');
+      
+      // If we successfully identified columns, reformat them sequentially
+      if (columnLines.left.length > 0 && columnLines.right.length > 0) {
+        const leftText = columnLines.left.join('\n');
+        const rightText = columnLines.right.join('\n');
+        
+        // Reassemble text with columns in sequence
+        text = leftText + '\n\n' + rightText;
+      }
     }
     
-    // STAGE 4: Structure analysis and repair
+    // STAGE 3: Structure analysis and repair
     
     // Split text into lines for more precise processing
     let lines = text.split('\n');
@@ -1433,25 +1438,10 @@ export default function ImageToText() {
         continue;
       }
       
-      // Special handling for "Q xx." format common in vocabulary tests
-      if (/^Q\s*\d+[\.\)]/i.test(line)) {
-        inQuestion = true;
-        // Extract the question number
-        const match = line.match(/\d+/);
-        if (match) {
-          questionIndex = parseInt(match[0], 10);
-        }
-        // Standardize question format
-        line = line.replace(/^Q\s*(\d+)[\.\)]/i, 'Question $1:');
-        processedLines.push(line);
-        previousLine = line;
-        continue;
-      }
-      
       // Detect question pattern (number followed by text)
-      if (/^(\d+)[\.)\]]?\s/.test(line)) {
+      if (/^(\d+|Q\s*\d+)[\.)\]]?\s/.test(line)) {
         // Extract the question number
-        const match = line.match(/^(\d+)/);
+        const match = line.match(/(\d+)/);
         if (match) {
           questionIndex = parseInt(match[1], 10);
         }
@@ -1459,14 +1449,9 @@ export default function ImageToText() {
         inQuestion = true;
         optionCount = 0;
         // Standardize question format
-        line = line.replace(/^(\d+)[\.)\]]?\s/, '$1) ');
+        line = line.replace(/^(Q\s*)?(\d+)[\.)\]]?\s/, '$2) ');
         processedLines.push(line);
         previousLine = line;
-      }
-      // Handle "Options:" line that often precedes the actual options
-      else if (/^(?:Options|Opts|Opc)[\.:]/i.test(line)) {
-        processedLines.push("Options:");
-        previousLine = "Options:";
       }
       // Detect option pattern
       else if (/^[A-Da-d][\.)\]]\s/.test(line)) {
@@ -1474,6 +1459,18 @@ export default function ImageToText() {
         line = line.replace(/^([A-Da-d])[\.)\]]\s/, (_, letter) => letter.toUpperCase() + '. ');
         optionCount++;
         processedLines.push(line);
+        previousLine = line;
+      }
+      // Handle word meaning target word (usually in all caps)
+      else if (/^[A-Z]{3,}$/.test(line)) {
+        // This is likely a target word for word meaning questions
+        if (processedLines.length > 0 && processedLines[processedLines.length - 1] !== '') {
+          processedLines.push('');
+        }
+        processedLines.push(line);
+        if (processedLines.length > 0 && processedLines[processedLines.length - 1] !== '') {
+          processedLines.push('');
+        }
         previousLine = line;
       }
       // Handle lines that look like options but might be malformatted
@@ -1489,9 +1486,7 @@ export default function ImageToText() {
           previousLine = line;
         } else {
           // It was a false positive, treat as a continuation of the previous line
-          if (previousLine && (previousLine.startsWith(questionIndex + ')') || 
-              previousLine.startsWith("Question") ||
-              /^[A-D]\./.test(previousLine))) {
+          if (previousLine && (previousLine.startsWith(questionIndex + ')') || /^[A-D]\./.test(previousLine))) {
             // Append to the previous line
             processedLines[processedLines.length - 1] += ' ' + line;
           } else {
@@ -1500,14 +1495,17 @@ export default function ImageToText() {
           previousLine = line;
         }
       }
+      // Detect "Options:" line
+      else if (/^[Oo]pt(?:ion)?s?:/.test(line)) {
+        // This is an options label, standardize it
+        processedLines.push("Options:");
+        previousLine = line;
+      }
       // Detect if this line should be part of the previous line
       else if (previousLine && 
                !line.startsWith(questionIndex + ')') && 
-               !line.startsWith("Question") &&
                !(/^[A-D]\./.test(line)) && 
-               (previousLine.startsWith(questionIndex + ')') || 
-                previousLine.startsWith("Question") ||
-                /^[A-D]\./.test(previousLine))) {
+               (previousLine.startsWith(questionIndex + ')') || /^[A-D]\./.test(previousLine))) {
         // Append to the previous line
         processedLines[processedLines.length - 1] += ' ' + line;
       }
@@ -1518,33 +1516,134 @@ export default function ImageToText() {
       }
     }
     
-    // STAGE 5: Final cleanup and formatting
-    // Ensure there's separation between question text and options
-    let finalLines = [];
-    let lastLineWasQuestion = false;
+    // STAGE 4: Structure validation and formatting
+    // Now validate option sequence (A, B, C, D) in final output
+    const finalLines = [];
+    let currentQuestion = null;
+    let options = [];
     
     for (let i = 0; i < processedLines.length; i++) {
       const line = processedLines[i];
       
-      // Detect if line is a question or an option
-      const isQuestion = /^(\d+\)|Question \d+:)/.test(line);
-      const isOption = /^[A-D]\./.test(line);
-      
-      // If this is an option and the last line was a question, add empty line
-      if (isOption && lastLineWasQuestion) {
+      // Detect question
+      if (/^\d+\)/.test(line)) {
+        // If we were processing a previous question, add it and its options
+        if (currentQuestion !== null) {
+          finalLines.push(currentQuestion);
+          
+          // For aptitude tests, ensure options are in correct A-B-C-D order
+          if (isAptitudeTest && options.length > 0) {
+            // Sort options in correct order (A, B, C, D)
+            options.sort((a, b) => {
+              const letterA = a.charAt(0);
+              const letterB = b.charAt(0);
+              return letterA.localeCompare(letterB);
+            });
+          }
+          
+          // Add the sorted options
+          finalLines.push(...options);
+          finalLines.push(''); // Add blank line after options
+          
+          // Reset for next question
+          options = [];
+        }
+        
+        currentQuestion = line;
+      }
+      // Detect option
+      else if (/^[A-D]\./.test(line)) {
+        options.push(line);
+      }
+      // Target word for meaning questions (all caps)
+      else if (/^[A-Z]{3,}$/.test(line)) {
+        if (currentQuestion !== null) {
+          finalLines.push(currentQuestion);
+          finalLines.push(...options);
+          finalLines.push('');
+          options = [];
+          currentQuestion = null;
+        }
+        finalLines.push('');
+        finalLines.push(line);
         finalLines.push('');
       }
-      
-      finalLines.push(line);
-      lastLineWasQuestion = isQuestion;
+      // Regular text
+      else if (line !== '') {
+        // If we're between questions, just add the line
+        if (currentQuestion === null) {
+          finalLines.push(line);
+        }
+        // Otherwise, append to the current question
+        else if (options.length === 0) {
+          currentQuestion += ' ' + line;
+        }
+        // Or append to the last option
+        else if (options.length > 0) {
+          options[options.length - 1] += ' ' + line;
+        }
+      }
+      // Keep blank lines between questions
+      else {
+        if (i > 0 && processedLines[i-1] !== '') {
+          finalLines.push('');
+        }
+      }
     }
     
-    // Join the lines back into text
+    // Add the last question and its options
+    if (currentQuestion !== null) {
+      finalLines.push(currentQuestion);
+      
+      // For aptitude tests, ensure options are in correct A-B-C-D order
+      if (isAptitudeTest && options.length > 0) {
+        // Sort options in correct order (A, B, C, D)
+        options.sort((a, b) => {
+          const letterA = a.charAt(0);
+          const letterB = b.charAt(0);
+          return letterA.localeCompare(letterB);
+        });
+      }
+      
+      // Add the sorted options
+      finalLines.push(...options);
+    }
+    
+    // STAGE 5: Final cleanup and formatting
     let result = finalLines.join('\n');
     
     // Final cleanup - fix common issues that might have been introduced
     result = result.replace(/\n{3,}/g, '\n\n'); // Remove excessive blank lines
     result = result.replace(/\s{2,}/g, ' '); // Remove double spaces
+    
+    // Fix word meaning format issues that might have been introduced
+    if (containsWordSynonymQuestions) {
+      // Fix question patterns specific to word meaning tests
+      result = result.replace(/closest\s+to\s+the\s+meaning/gi, "closest to the meaning");
+      result = result.replace(/closest\s+to\s+opposite\s+in\s+meaning/gi, "closest to opposite in meaning");
+      result = result.replace(/Mark\s+the\s+option\s+which\s+is\s+closest/gi, "Mark the option which is closest");
+      
+      // Make main word stand out
+      result = result.replace(/(?:HOSTILE|GROVEL|[A-Z]{3,})/g, (match) => `\n${match}\n`);
+    }
+    
+    // If it's an aptitude test, apply one more pass of specific formatting
+    if (isAptitudeTest) {
+      // Ensure there's proper spacing around the question number
+      result = result.replace(/(\d+)\)\s*([A-Za-z])/g, '$1) $2');
+      
+      // Ensure consistent option formatting
+      result = result.replace(/([A-D])\.\s+/g, '$1. ');
+      
+      // Fix decimals that might have been missed
+      result = result.replace(/(\d+)\s+(\d+)/g, (match, p1, p2) => {
+        // Only join with decimal if it makes sense (like 17 5 -> 17.5)
+        if (p2.length === 1 || p2.length === 2) {
+          return p1 + '.' + p2;
+        }
+        return match; // Leave as is
+      });
+    }
     
     return result;
   };
@@ -1643,9 +1742,9 @@ export default function ImageToText() {
   // Add advanced settings to the UI controls
   const updatePreprocessingUI = () => {
   return (
-      <Grid templateColumns={["1fr", null, "1fr 1fr"]} gap={4} mt={2} pl={4}>
-                    <FormControl display="flex" alignItems="center">
-          <FormLabel htmlFor="grayscale" mb="0" fontSize="sm">
+      <Grid templateColumns={["1fr", null, "1fr 1fr"]} gap={[2, 3, 4]} mt={2} pl={[2, 3, 4]}>
+                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
+          <FormLabel htmlFor="grayscale" mb="0" fontSize={["xs", "sm"]}>
             Convert to Grayscale
                       </FormLabel>
                       <Switch 
@@ -1654,11 +1753,12 @@ export default function ImageToText() {
             onChange={(e) => updatePreprocessing('grayscale', e.target.checked)}
                         isDisabled={isProcessing}
                         colorScheme="blue"
+                        size={["sm", "md"]}
                       />
                     </FormControl>
         
-                    <FormControl display="flex" alignItems="center">
-          <FormLabel htmlFor="binarize" mb="0" fontSize="sm">
+                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
+          <FormLabel htmlFor="binarize" mb="0" fontSize={["xs", "sm"]}>
             Binarize (Black & White)
                       </FormLabel>
                       <Switch 
@@ -1667,11 +1767,12 @@ export default function ImageToText() {
             onChange={(e) => updatePreprocessing('binarize', e.target.checked)}
                         isDisabled={isProcessing}
                         colorScheme="blue"
+                        size={["sm", "md"]}
                       />
                     </FormControl>
 
-        <FormControl display="flex" alignItems="center">
-          <FormLabel htmlFor="denoise" mb="0" fontSize="sm">
+        <FormControl display="flex" alignItems="center" justifyContent="space-between">
+          <FormLabel htmlFor="denoise" mb="0" fontSize={["xs", "sm"]}>
             Denoise Image
                         </FormLabel>
                         <Switch 
@@ -1735,8 +1836,8 @@ export default function ImageToText() {
                                   step={0.1}
                                   onChange={(_, val) => updatePreprocessing('contrast', val)}
                                   isDisabled={isProcessing}
-                                  size="sm"
-                                  maxW="70px"
+                                  size={["xs", "sm"]}
+                                  maxW={["50px", "70px"]}
                                 >
                                   <NumberInputField />
                                   <NumberInputStepper>
@@ -1774,9 +1875,9 @@ export default function ImageToText() {
                                     max={255}
                                     step={1}
                                     onChange={(_, val) => updatePreprocessing('threshold', val)}
-                  isDisabled={isProcessing || preprocessing.adaptiveThreshold}
-                                    size="sm"
-                                    maxW="70px"
+                                    isDisabled={isProcessing || preprocessing.adaptiveThreshold}
+                                    size={["xs", "sm"]}
+                                    maxW={["50px", "70px"]}
                                   >
                                     <NumberInputField />
                                     <NumberInputStepper>
@@ -1815,8 +1916,8 @@ export default function ImageToText() {
                                   step={0.5}
                                   onChange={(_, val) => updatePreprocessing('scale', val)}
                                   isDisabled={isProcessing}
-                                  size="sm"
-                                  maxW="70px"
+                                  size={["xs", "sm"]}
+                                  maxW={["50px", "70px"]}
                                 >
                                   <NumberInputField />
                                   <NumberInputStepper>
@@ -1829,7 +1930,7 @@ export default function ImageToText() {
                           </Box>
                           
                           <FormControl display="flex" alignItems="center">
-                            <FormLabel htmlFor="deskew" mb="0" fontSize="sm">
+                            <FormLabel htmlFor="deskew" mb="0" fontSize={["xs", "sm"]}>
                               Auto-Deskew
                             </FormLabel>
                             <Switch 
@@ -1838,265 +1939,42 @@ export default function ImageToText() {
                               onChange={(e) => updatePreprocessing('deskew', e.target.checked)}
                               isDisabled={isProcessing}
                               colorScheme="blue"
+                              size={["sm", "md"]}
                             />
                           </FormControl>
                         </Grid>
     );
   };
 
-  // Function to determine the best OCR model based on image content analysis
-  const selectOCRModel = async (imageSrc: string): Promise<string> => {
-    const img = new Image();
-    img.src = imageSrc;
-    await new Promise((resolve) => {
-      img.onload = resolve;
-    });
-
-    // Get a small version of the image for analysis
-    const canvas = document.createElement('canvas');
-    const maxDim = 500; // Analyze at a reasonable resolution
-    const scale = maxDim / Math.max(img.width, img.height);
-    canvas.width = img.width * scale;
-    canvas.height = img.height * scale;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return 'default';
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    
-    // Analyze image characteristics
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    
-    // Check characteristics for text-dense images (like MCQs)
-    let textDensity = 0;
-    let blackPixelCount = 0;
-    let totalPixels = data.length / 4;
-    
-    // Count dark pixels as potential text
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (luminance < 120) { // Dark pixels
-        blackPixelCount++;
-      }
-    }
-    
-    textDensity = blackPixelCount / totalPixels;
-    
-    // Check for horizontal lines that might indicate MCQ options
-    let horizontalLines = 0;
-    const lineThreshold = 20; // Minimum length for a horizontal line
-    
-    for (let y = 0; y < canvas.height; y++) {
-      let consecutiveDarkPixels = 0;
-      for (let x = 0; x < canvas.width; x++) {
-        const idx = (y * canvas.width + x) * 4;
-        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        
-        if (luminance < 120) {
-          consecutiveDarkPixels++;
-        } else {
-          if (consecutiveDarkPixels >= lineThreshold) {
-            horizontalLines++;
-          }
-          consecutiveDarkPixels = 0;
-        }
-      }
-      // Check end of line
-      if (consecutiveDarkPixels >= lineThreshold) {
-        horizontalLines++;
-      }
-    }
-    
-    // Check for isolated blobs (potential MCQ circles or option indicators)
-    let isolatedBlobs = 0;
-    const blobMinSize = 5;
-    const blobMaxSize = 30;
-    const visited = new Set<string>();
-    
-    // Simple blob detection
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const idx = (y * canvas.width + x) * 4;
-        const pixelKey = `${x},${y}`;
-        
-        // Skip visited pixels
-        if (visited.has(pixelKey)) continue;
-        
-        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        
-        // If dark pixel, start flood fill to check if it's a blob
-        if (luminance < 120) {
-          const blobSize = floodFill(x, y, canvas.width, canvas.height, data, visited);
-          if (blobSize >= blobMinSize && blobSize <= blobMaxSize) {
-            isolatedBlobs++;
-          }
-        }
-        
-        visited.add(pixelKey);
-      }
-    }
-    
-    // Calculate horizontal text characteristic
-    const horizontalTextScore = horizontalLines > 10 ? 1 : horizontalLines / 10;
-    
-    // Detect column layout - check if text is organized in columns
-    let columnDetectionScore = 0;
-    
-    // Vertical projection (sum of dark pixels in each column)
-    const columnProjection = new Array(canvas.width).fill(0);
-    for (let x = 0; x < canvas.width; x++) {
-      for (let y = 0; y < canvas.height; y++) {
-        const idx = (y * canvas.width + x) * 4;
-        const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        if (luminance < 120) {
-          columnProjection[x]++;
-        }
-      }
-    }
-    
-    // Check for peaks and valleys in the column projection
-    let peakCount = 0;
-    const peakThreshold = canvas.height * 0.05; // Minimum height for a peak
-    
-    for (let x = 5; x < canvas.width - 5; x++) {
-      // Check if this point is higher than its neighbors (simple peak detection)
-      if (columnProjection[x] > peakThreshold && 
-          columnProjection[x] > columnProjection[x-5] && 
-          columnProjection[x] > columnProjection[x+5]) {
-        peakCount++;
-      }
-    }
-    
-    // Multiple peaks indicate possible column layout
-    columnDetectionScore = peakCount >= 3 ? 1 : peakCount / 3;
-    
-    // Check for vocabulary MCQ characteristics:
-    // 1. High text density
-    // 2. Presence of option indicators (MCQ circles or option letters)
-    // 3. Horizontal lines of text (options)
-    // 4. Not a lot of column structure
-    const vocabularyMCQScore = (textDensity > 0.12 ? 1 : textDensity / 0.12) * 0.4 +
-                               (isolatedBlobs > 3 ? 1 : isolatedBlobs / 3) * 0.3 +
-                               horizontalTextScore * 0.2 +
-                               (1 - columnDetectionScore) * 0.1;
-    
-    // Check for math/formula characteristics
-    let mathSymbolScore = 0;
-    
-    // Analyze small regions of the image for potential math symbols
-    const regionSize = 10;
-    for (let y = 0; y < canvas.height - regionSize; y += regionSize) {
-      for (let x = 0; x < canvas.width - regionSize; x += regionSize) {
-        let darkPixelsInRegion = 0;
-        let totalRegionPixels = regionSize * regionSize;
-        
-        // Count dark pixels in this region
-        for (let dy = 0; dy < regionSize; dy++) {
-          for (let dx = 0; dx < regionSize; dx++) {
-            const idx = ((y + dy) * canvas.width + (x + dx)) * 4;
-            const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-            if (luminance < 120) {
-              darkPixelsInRegion++;
-            }
-          }
-        }
-        
-        // If a region has a moderate proportion of dark pixels, it might be a math symbol
-        const regionDensity = darkPixelsInRegion / totalRegionPixels;
-        if (regionDensity > 0.3 && regionDensity < 0.7) {
-          mathSymbolScore += 1;
-        }
-      }
-    }
-    
-    // Normalize math symbol score
-    mathSymbolScore = Math.min(1, mathSymbolScore / 20);
-    
-    // Final decision
-    if (vocabularyMCQScore > 0.7) {
-      return 'vocabulary-mcq';  // Use the specialized model for vocabulary MCQs
-    } else if (textDensity > 0.15 && horizontalTextScore > 0.6) {
-      return 'ultra-accurate'; // Dense text with horizontal structure
-    } else if (mathSymbolScore > 0.5) {
-      return 'math-formula'; // Math content
-    } else if (textDensity < 0.08) {
-      return 'fast'; // Low text density
-    } else {
-      return 'default'; // Default balanced approach
-    }
-  };
-  
-  // Helper function for blob detection using flood fill
-  const floodFill = (
-    startX: number, 
-    startY: number, 
-    width: number, 
-    height: number, 
-    data: Uint8ClampedArray, 
-    visited: Set<string>
-  ): number => {
-    const queue: [number, number][] = [[startX, startY]];
-    let size = 0;
-    
-    while (queue.length > 0) {
-      const [x, y] = queue.shift()!;
-      const pixelKey = `${x},${y}`;
-      
-      if (visited.has(pixelKey)) continue;
-      
-      visited.add(pixelKey);
-      
-      const idx = (y * width + x) * 4;
-      const luminance = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-      
-      if (luminance >= 120) continue; // Skip light pixels
-      
-      size++;
-      
-      // Check neighbors
-      const neighbors = [
-        [x+1, y], [x-1, y], [x, y+1], [x, y-1]
-      ];
-      
-      for (const [nx, ny] of neighbors) {
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-          const neighborKey = `${nx},${ny}`;
-          if (!visited.has(neighborKey)) {
-            queue.push([nx, ny]);
-          }
-        }
-      }
-    }
-    
-    return size;
-  };
-
   return (
-    <VStack spacing={6} w="full">
+    <VStack spacing={[4, 6]} w="full" px={[2, 4, 6]}>
       {/* Header with app info */}
       <Box 
         w="full" 
         bg="blue.600" 
-        p={4} 
+        p={[3, 4]} 
         borderRadius="md" 
         boxShadow="md"
         color="white"
       >
-        <Flex justifyContent="space-between" alignItems="center">
+        <Flex 
+          justifyContent="space-between" 
+          alignItems="center" 
+          direction={["column", "row"]} 
+          gap={[2, 0]}
+        >
           <Box>
-            <Heading size="lg">Image to Text Converter</Heading>
-            <Text mt={1}>Advanced OCR with AI-powered enhancement</Text>
+            <Heading size={["md", "lg"]}>Image to Text Converter</Heading>
+            <Text mt={1} fontSize={["xs", "sm"]}>Advanced OCR with AI-powered enhancement</Text>
           </Box>
-          <HStack spacing={2}>
-            <Badge colorScheme="red" p={2} borderRadius="md" fontSize="sm">
+          <HStack spacing={2} mt={[2, 0]}>
+            <Badge colorScheme="red" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
               Fast
             </Badge>
-            <Badge colorScheme="blue" p={2} borderRadius="md" fontSize="sm">
+            <Badge colorScheme="blue" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
               Balanced
             </Badge>
-            <Badge colorScheme="green" p={2} borderRadius="md" fontSize="sm">
+            <Badge colorScheme="green" p={[1, 2]} borderRadius="md" fontSize={["xs", "sm"]}>
               Ultra Accurate
             </Badge>
           </HStack>
@@ -2106,12 +1984,12 @@ export default function ImageToText() {
       {/* Drop area */}
       <Box
         w="full"
-        h="200px"
+        h={["150px", "180px", "200px"]}
         border="2px dashed"
         borderColor={isDragActive ? 'blue.500' : 'gray.200'}
         borderRadius="md"
         bg={isDragActive ? 'blue.50' : 'white'}
-        p={4}
+        p={[2, 3, 4]}
         textAlign="center"
         display="flex"
         flexDirection="column"
@@ -2136,16 +2014,16 @@ export default function ImageToText() {
           ref={fileInputRef}
           display="none"
         />
-        <Box fontSize="5xl" color="blue.500">
+        <Box fontSize={["4xl", "5xl"]} color="blue.500">
           📄
         </Box>
-        <Text fontWeight="medium" mt={2} color="gray.700">
+        <Text fontWeight="medium" mt={2} color="gray.700" fontSize={["sm", "md"]}>
           Click to upload or drag & drop images here
         </Text>
-        <Text fontSize="sm" mt={1} color="gray.500">
+        <Text fontSize={["xs", "sm"]} mt={1} color="gray.500">
           Supports JPEG, PNG, WEBP, GIF, BMP (up to {MAX_IMAGES} files)
         </Text>
-        <Text fontSize="xs" mt={2} color="blue.500">
+        <Text fontSize="xs" mt={2} color="blue.500" display={["none", "block"]}>
           Pro tip: You can also paste images directly from your clipboard
         </Text>
       </Box>
@@ -2158,26 +2036,26 @@ export default function ImageToText() {
                   )}
 
       {/* OCR Settings */}
-      <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
+      <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
         <Accordion allowToggle defaultIndex={[0]}>
           <AccordionItem border="none">
             <h2>
               <AccordionButton px={0}>
-                <Box flex="1" textAlign="left" fontWeight="medium">
+                <Box flex="1" textAlign="left" fontWeight="medium" fontSize={["sm", "md"]}>
                   OCR Settings
                 </Box>
                 <AccordionIcon />
               </AccordionButton>
             </h2>
             <AccordionPanel pb={4} px={0}>
-              <VStack spacing={4} align="stretch">
+              <VStack spacing={[3, 4]} align="stretch">
                 {/* OCR Model Selection */}
                 <Box>
                   <Text fontSize="sm" mb={1} fontWeight="medium">OCR Processing Model</Text>
                   <Select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    size="sm"
+                    size={["xs", "sm"]}
                     isDisabled={isProcessing}
                   >
                     {Object.entries(OCR_MODELS).map(([key, model]) => (
@@ -2189,13 +2067,13 @@ export default function ImageToText() {
                 </Box>
                 
                 {/* Language Selection */}
-                <Grid templateColumns={["1fr", null, "1fr 1fr"]} gap={4}>
+                <Grid templateColumns={["1fr", "1fr", "1fr 1fr"]} gap={[2, 4]}>
                   <Box>
                     <Text fontSize="sm" mb={1}>Language</Text>
                     <Select
                       value={selectedLanguage}
                       onChange={(e) => setSelectedLanguage(e.target.value)}
-                      size="sm"
+                      size={["xs", "sm"]}
                       isDisabled={isProcessing}
                     >
                       {Object.entries(OCR_LANGUAGES).map(([value, label]) => (
@@ -2211,8 +2089,8 @@ export default function ImageToText() {
                 <Box></Box>
                 
                 <Box>
-                  <FormControl display="flex" alignItems="center">
-                    <FormLabel htmlFor="detect-tables" mb="0" fontSize="sm">
+                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                    <FormLabel htmlFor="detect-tables" mb="0" fontSize={["xs", "sm"]}>
                       Detect Tables
                     </FormLabel>
                     <Switch 
@@ -2221,12 +2099,13 @@ export default function ImageToText() {
                       onChange={(e) => setDetectTables(e.target.checked)}
                       isDisabled={isProcessing}
                       colorScheme="blue"
+                      size={["sm", "md"]}
                     />
                   </FormControl>
                 </Box>
                 <Box>
-                  <FormControl display="flex" alignItems="center">
-                    <FormLabel htmlFor="ai-enhancement" mb="0" fontSize="sm">
+                  <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                    <FormLabel htmlFor="ai-enhancement" mb="0" fontSize={["xs", "sm"]}>
                       Use AI Enhancement
                     </FormLabel>
                     <Switch 
@@ -2235,6 +2114,7 @@ export default function ImageToText() {
                       onChange={(e) => setUseAiEnhancement(e.target.checked)}
                       isDisabled={isProcessing}
                       colorScheme="blue"
+                      size={["sm", "md"]}
                     />
                   </FormControl>
                 </Box>
@@ -2245,7 +2125,7 @@ export default function ImageToText() {
                     <Select
                       value={tableFormat}
                       onChange={(e) => setTableFormat(e.target.value)}
-                      size="sm"
+                      size={["xs", "sm"]}
                       isDisabled={isProcessing || !detectTables}
                     >
                       {Object.entries(TABLE_FORMATS).map(([value, label]) => (
@@ -2267,18 +2147,25 @@ export default function ImageToText() {
 
       {/* Image Preview Grid */}
       {images.length > 0 && (
-        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
-          <Flex justify="space-between" mb={3} align="center">
-            <Text fontWeight="medium">
+        <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
+          <Flex 
+            justify="space-between" 
+            mb={3} 
+            align={["flex-start", "center"]} 
+            direction={["column", "row"]}
+            gap={[2, 0]}
+          >
+            <Text fontWeight="medium" fontSize={["sm", "md"]}>
               Images ({images.length}/{MAX_IMAGES})
             </Text>
-            <HStack>
+            <HStack spacing={2}>
               <Button 
                 size="sm" 
                 colorScheme="red" 
                 variant="outline" 
                 onClick={handleReset}
                 isDisabled={isProcessing}
+                fontSize={["xs", "sm"]}
               >
                 Clear All
               </Button>
@@ -2289,6 +2176,7 @@ export default function ImageToText() {
                 isLoading={isProcessing}
                 loadingText="Processing"
                 isDisabled={images.length === 0 || isProcessing}
+                fontSize={["xs", "sm"]}
               >
                 Extract Text
               </Button>
@@ -2296,21 +2184,25 @@ export default function ImageToText() {
           </Flex>
 
           <Grid 
-            templateColumns="repeat(auto-fill, minmax(150px, 1fr))" 
-            gap={4}
-            maxH="300px"
+            templateColumns={[
+              "repeat(auto-fill, minmax(100px, 1fr))",
+              "repeat(auto-fill, minmax(120px, 1fr))",
+              "repeat(auto-fill, minmax(150px, 1fr))"
+            ]}
+            gap={[2, 3, 4]}
+            maxH={["250px", "300px"]}
             overflowY="auto"
             pb={2}
           >
             {images.map((image) => (
               <Box key={image.id} borderWidth="1px" borderRadius="lg" overflow="hidden" bg="white" boxShadow="sm">
-                <Box p={2}>
+                <Box p={[1, 2]}>
                   <Box position="relative">
                     <ChakraImage 
                       src={image.preprocessed || image.preview}
                       alt={image.file.name}
                       objectFit="cover"
-                      height="100px"
+                      height={["80px", "100px"]}
                       width="full"
                       borderRadius="md"
                       opacity={image.processing ? 0.5 : 1}
@@ -2381,8 +2273,8 @@ export default function ImageToText() {
                       mt={1} 
                       textAlign="center"
                     >
-                      {image.file.name.substring(0, 20)}
-                      {image.file.name.length > 20 ? '...' : ''}
+                      {image.file.name.substring(0, 15)}
+                      {image.file.name.length > 15 ? '...' : ''}
                     </Text>
                   </Tooltip>
                 </Box>
@@ -2394,8 +2286,8 @@ export default function ImageToText() {
 
       {/* Progress Bar */}
       {isProcessing && (
-        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
-          <Text mb={1} fontSize="sm">
+        <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
+          <Text mb={1} fontSize={["xs", "sm"]}>
             Processing images ({Math.round(progress)}%)
           </Text>
           <Progress value={progress} size="sm" colorScheme="blue" borderRadius="md" />
@@ -2404,12 +2296,18 @@ export default function ImageToText() {
 
       {/* Results */}
       {combinedText && (
-        <Box w="full" bg="white" p={4} borderRadius="md" boxShadow="sm">
-          <Flex justify="space-between" mb={3} align="center">
-              <Text fontWeight="medium">Extracted Text</Text>
+        <Box w="full" bg="white" p={[3, 4]} borderRadius="md" boxShadow="sm">
+          <Flex 
+            justify="space-between" 
+            mb={3} 
+            align={["flex-start", "center"]} 
+            direction={["column", "row"]}
+            gap={[2, 0]}
+          >
+            <Text fontWeight="medium" fontSize={["sm", "md"]}>Extracted Text</Text>
             <HStack spacing={2}>
               {processingMetrics.confidence && (
-                <Badge colorScheme="green">
+                <Badge colorScheme="green" fontSize={["xs", "sm"]}>
                   Confidence: {processingMetrics.confidence.toFixed(1)}%
                 </Badge>
               )}
@@ -2419,6 +2317,7 @@ export default function ImageToText() {
                 onClick={copyToClipboard}
                 colorScheme="blue"
                 variant="outline"
+                fontSize={["xs", "sm"]}
               >
               Copy All
             </Button>
@@ -2428,13 +2327,13 @@ export default function ImageToText() {
           <Textarea
             value={combinedText}
             onChange={(e) => setCombinedText(e.target.value)}
-            rows={12}
+            rows={[8, 10, 12]}
             resize="vertical"
             borderColor="gray.300"
             _hover={{ borderColor: 'gray.400' }}
             borderRadius="md"
             fontFamily="monospace"
-            fontSize="sm"
+            fontSize={["xs", "sm"]}
           />
           
           {processingMetrics.totalTime && (
@@ -2449,25 +2348,26 @@ export default function ImageToText() {
       <Box 
         w="full" 
         bg="gray.50" 
-        p={4} 
+        p={[3, 4]} 
         borderRadius="md" 
         boxShadow="sm" 
-        mt={6}
+        mt={[4, 6]}
       >
         <Flex 
           direction={["column", "row"]} 
           justifyContent="space-between" 
-          alignItems={["center", "flex-start"]}
+          alignItems="center"
+          gap={[3, 0]}
         >
-          <Box textAlign={["center", "left"]} mb={[4, 0]}>
-            <Text fontWeight="bold">Developed by:</Text>
-            <Text>Swastik Raj</Text>
-            <Text>Vansh Singh</Text>
+          <Box textAlign="center">
+            <Text fontWeight="bold" fontSize={["sm", "md"]}>Developed by:</Text>
+            <Text fontSize={["xs", "sm"]}>Swastik Raj</Text>
+            <Text fontSize={["xs", "sm"]}>Vansh Singh</Text>
           </Box>
-          <Box textAlign={["center", "right"]}>
-            <Text fontWeight="bold">Contact:</Text>
-            <Text>Phone: 7889364915</Text>
-            <Text>Advanced Image to Text Conversion</Text>
+          <Box textAlign="center">
+            <Text fontWeight="bold" fontSize={["sm", "md"]}>Contact:</Text>
+            <Text fontSize={["xs", "sm"]}>Phone: 7889364915</Text>
+            <Text fontSize={["xs", "sm"]}>Advanced Image to Text Conversion</Text>
           </Box>
         </Flex>
       </Box>
