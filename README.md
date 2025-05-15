@@ -43,9 +43,13 @@ A modern, responsive web application that extracts text from images using advanc
 - Node.js (v14 or higher)
 - npm or yarn
 
-### 🧩 Installation
+---
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/image-to-text.git
-   cd image-to-text
+## 📦 Installation
+
+Install dependencies:
+
+```bash
+npm install
+# or
+yarn install
